@@ -8,6 +8,10 @@ from __future__ import annotations
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QTabWidget)
 
 from odrtune.ui.connect_panel import ConnectPanel
+from odrtune.ui.plots_panel import PlotsPanel
+from odrtune.ui.calibration_panel import CalibrationPanel
+from odrtune.ui.tuning_panel import TuningPanel
+from odrtune.ui.config_panel import ConfigPanel
 
 
 class MainWindow(QMainWindow):
@@ -25,6 +29,11 @@ class MainWindow(QMainWindow):
         root.addWidget(self._connect)
         root.addWidget(self._tabs, 1)
         self.setCentralWidget(central)
+
+        self.add_panel("Plots", PlotsPanel())
+        self.add_panel("Calibration", CalibrationPanel())
+        self.add_panel("Tuning", TuningPanel())
+        self.add_panel("Config", ConfigPanel())
 
     def add_panel(self, title, panel):
         """Add a feature tab. If the panel has set_device(), it is registered

@@ -106,3 +106,10 @@ def test_config_panel_backup_restore_save(app, tmp_path):
     assert raw.axis0.controller.config.pos_gain == 20.0  # restored original
     panel._save()
     assert raw.saved is True
+
+
+def test_full_window_has_all_tabs(app):
+    from odrtune.ui.main_window import MainWindow
+    win = MainWindow()
+    titles = [win._tabs.tabText(i) for i in range(win._tabs.count())]
+    assert titles == ["Plots", "Calibration", "Tuning", "Config"]

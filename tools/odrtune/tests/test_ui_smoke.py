@@ -41,3 +41,15 @@ def test_add_panel_fans_out_device(app):
     dev = Device(FakeODrive())
     win._set_device(dev)
     assert panel.got is dev
+
+
+def test_plots_panel_constructs_and_sets_device(app):
+    from odrtune.ui.plots_panel import PlotsPanel
+    from tests.fake_odrive import FakeODrive
+    from odrtune.core.device import Device
+
+    panel = PlotsPanel(interval_ms=10)
+    panel.set_device(Device(FakeODrive()))
+    panel._tick()  # one manual tick populates curves without the timer
+    assert panel._sampler is not None
+    assert len(panel._sampler.series("t")) == 1

@@ -53,3 +53,21 @@ def test_plots_panel_constructs_and_sets_device(app):
     panel._tick()  # one manual tick populates curves without the timer
     assert panel._sampler is not None
     assert len(panel._sampler.series("t")) == 1
+
+
+def test_calibration_panel_runs_against_fake(app):
+    from odrtune.ui.calibration_panel import CalibrationPanel
+    from tests.fake_odrive import FakeODrive
+    from odrtune.core.device import Device
+
+    raw = FakeODrive()
+    panel = CalibrationPanel(interval_ms=1)
+    panel.set_device(Device(raw))
+    panel._start()
+    assert raw.axis0.requested_state == 3
+    raw.axis0.current_state = 3
+    panel._poll()  # running
+    raw.axis0.current_state = 1
+    raw.axis0.procedure_result = 0
+    panel._poll()  # success
+    assert "succeeded" in panel._status.text()

@@ -43,7 +43,9 @@ so the C library does not consume any tuning output at runtime.
   allocation, no global mutable state.
 - Each drive is one `odrive_t` instance, holding:
   - a **send callback** + user context:
-    `bool (*send)(void *ctx, uint32_t can_id, const uint8_t *data, uint8_t len)`
+    `bool (*send)(void *ctx, uint32_t can_id, const uint8_t *data, uint8_t len, bool rtr)`
+    (the `rtr`/remote-request flag lets getters request values via RTR frames;
+    maps directly to `canbus_wrapper`'s `can_send(..., is_request)`)
   - `node_id` (0–63)
   - conversion factor + inversion flag (see §1.4)
   - a `feedback` struct (last-decoded values)
@@ -92,8 +94,9 @@ so the C library does not consume any tuning output at runtime.
 - `set_traj_vel_limit`, `set_traj_accel_limits`, `set_traj_inertia`
 - `clear_errors`, `estop`, `reboot`
 
-**Feedback / getters** (`odrive_feedback.c`) — send a request frame; replies
-arrive later via RX and populate `feedback`/callbacks:
+**Feedback / getters** (`odrive_feedback.c`) — send an **RTR (remote-request)
+frame** (zero-length, `rtr=true`); the ODrive replies with a data frame that
+arrives later via RX and populates `feedback`/callbacks:
 - encoder estimates (pos, vel), Iq (setpoint, measured), temperature,
   bus voltage/current, torques, powers, version, error (active errors +
   disarm reason), heartbeat (axis error/state/procedure result/traj-done).

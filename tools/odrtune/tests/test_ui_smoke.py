@@ -71,3 +71,21 @@ def test_calibration_panel_runs_against_fake(app):
     raw.axis0.procedure_result = 0
     panel._poll()  # success
     assert "succeeded" in panel._status.text()
+
+
+def test_tuning_panel_applies_gain_and_steps(app):
+    from odrtune.ui.tuning_panel import TuningPanel
+    from tests.fake_odrive import FakeODrive
+    from odrtune.core.device import Device
+
+    raw = FakeODrive()
+    panel = TuningPanel(interval_ms=1)
+    panel.set_device(Device(raw))
+    panel._apply_gain("pos_gain", 42.0)
+    assert raw.axis0.controller.config.pos_gain == 42.0
+    panel._start_step()
+    assert raw.axis0.requested_state == 8       # closed loop
+    assert raw.axis0.controller.input_pos == 1.0
+    panel._record()
+    t, y = panel._step.data()
+    assert len(t) == 1

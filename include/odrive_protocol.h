@@ -6,6 +6,10 @@
 #include <stdint.h>
 #include <string.h>
 
+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__)
+#error "odrive_lib requires a little-endian target"
+#endif
+
 /* CAN arbitration ID = (node_id[5:0] << 5) | cmd_id[4:0] */
 #define ODRIVE_CAN_ID(node_id, cmd) \
     ((((uint32_t)(node_id) & 0x3Fu) << 5) | ((uint32_t)(cmd) & 0x1Fu))

@@ -142,8 +142,8 @@ odrive_status_t odrive_request_torques(odrive_t *od);
 odrive_status_t odrive_request_powers(odrive_t *od);
 
 /* ---- internal (defined in odrive_comm.c, used by other modules) ---- */
-odrive_status_t odrive__send(odrive_t *od, uint8_t cmd,
-                             const uint8_t *data, uint8_t len, bool rtr);
+odrive_status_t odrive_send_frame(odrive_t *od, uint8_t cmd,
+                                  const uint8_t *data, uint8_t len, bool rtr);
 
 #ifdef __cplusplus
 }

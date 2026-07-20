@@ -9,10 +9,11 @@ void odrive_init(odrive_t *od, odrive_send_fn send, void *ctx,
     od->send = send;
     od->ctx = ctx;
     od->node_id = node_id & 0x3Fu;
-    od->motor_conv = invert ? -conversion : conversion;
+    od->motor_conv = (conversion == 0.0f) ? (invert ? -1.0f : 1.0f)
+                                          : (invert ? -conversion : conversion);
 }
 
-odrive_status_t odrive__send(odrive_t *od, uint8_t cmd,
+odrive_status_t odrive_send_frame(odrive_t *od, uint8_t cmd,
                              const uint8_t *data, uint8_t len, bool rtr)
 {
     if (!od || !od->send) return ODRIVE_ERR_BAD_ARG;
@@ -113,7 +114,7 @@ odrive_status_t odrive_write_sdo(odrive_t *od, uint16_t endpoint_id, uint32_t da
     p[1] = (uint8_t)(endpoint_id & 0xFFu);
     p[2] = (uint8_t)((endpoint_id >> 8) & 0xFFu);
     odrive_pack_u32(&p[4], data);
-    return odrive__send(od, ODRIVE_CMD_RXSDO, p, 8, false);
+    return odrive_send_frame(od, ODRIVE_CMD_RXSDO, p, 8, false);
 }
 
 odrive_status_t odrive_read_sdo(odrive_t *od, uint16_t endpoint_id)
@@ -122,7 +123,7 @@ odrive_status_t odrive_read_sdo(odrive_t *od, uint16_t endpoint_id)
     p[0] = 0x00;                 /* read opcode */
     p[1] = (uint8_t)(endpoint_id & 0xFFu);
     p[2] = (uint8_t)((endpoint_id >> 8) & 0xFFu);
-    return odrive__send(od, ODRIVE_CMD_RXSDO, p, 8, false);
+    return odrive_send_frame(od, ODRIVE_CMD_RXSDO, p, 8, false);
 }
 
 int odrive_get_status_string(odrive_t *od, char *buf, size_t buf_len)

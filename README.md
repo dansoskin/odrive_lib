@@ -40,6 +40,13 @@ See `examples/stm32_fdcan_canbus_wrapper.c` for wiring to
 `conv=1.0, invert=false` uses native ODrive units (turns, turns/s). Torque
 (Nm) and gains are always raw.
 
+With `invert=true`, position/velocity are inverted but torque stays raw
+(unconverted), so in torque mode a positive torque acts opposite to a positive
+velocity command.
+
+`odrive_get_status_string` uses `%f` and requires a float-enabled `printf`
+(e.g. on newlib-nano, link with `-u _printf_float`).
+
 ## Python tuning tool
 
 See `tools/odrtune/` (USB, PySide6). Independent of the C library.

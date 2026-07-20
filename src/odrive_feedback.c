@@ -4,7 +4,7 @@
  * replies with a data frame handled in odrive_on_can_rx(). */
 static odrive_status_t request(odrive_t *od, uint8_t cmd)
 {
-    return odrive__send(od, cmd, NULL, 0, true);
+    return odrive_send_frame(od, cmd, NULL, 0, true);
 }
 
 odrive_status_t odrive_request_version(odrive_t *od)     { return request(od, ODRIVE_CMD_GET_VERSION); }

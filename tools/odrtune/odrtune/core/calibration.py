@@ -29,15 +29,14 @@ class CalibrationRunner:
         if state != IDLE:
             self._left_idle = True
             return "running"
-        pr = self._dev.procedure_result()
-        if pr != 0:
-            # a non-zero procedure result at IDLE means the sequence failed
-            self.running = False
-            self.last_error = {"procedure_result": pr, **self._dev.errors()}
-            return "failed"
         if not self._left_idle:
-            # still in the initial IDLE tick before calibration kicked in
+            # initial IDLE tick before calibration engages; procedure_result
+            # may still hold a stale value from a prior run - ignore it.
             return "running"
-        # back to IDLE after having left it -> sequence finished
+        pr = self._dev.procedure_result()
+        if pr == 0:
+            self.running = False
+            return "success"
         self.running = False
-        return "success"
+        self.last_error = {"procedure_result": pr, **self._dev.errors()}
+        return "failed"

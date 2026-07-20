@@ -1,5 +1,5 @@
-"""Backup config to JSON, restore from JSON, save to NVM, and view/clear errors.
-File dialogs are wrapped so tests can drive backup/restore with explicit paths."""
+"""Backup config to JSON, restore from JSON, and save to NVM. File dialogs are
+wrapped so tests can drive backup/restore with explicit paths."""
 from __future__ import annotations
 
 import json
@@ -39,13 +39,21 @@ class ConfigPanel(QWidget):
 
     # --- testable core actions (no dialogs) ---
     def backup_to(self, path: str):
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(backup(self._dev), f, indent=2)
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(backup(self._dev), f, indent=2)
+        except Exception as exc:  # noqa: BLE001 - bad path/permission shouldn't crash the UI
+            self._status.setText(f"Backup failed: {exc}")
+            return
         self._status.setText(f"Backed up to {path}")
 
     def restore_from(self, path: str):
-        with open(path, "r", encoding="utf-8") as f:
-            restore(self._dev, json.load(f))
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                restore(self._dev, json.load(f))
+        except Exception as exc:  # noqa: BLE001 - bad path/permission shouldn't crash the UI
+            self._status.setText(f"Restore failed: {exc}")
+            return
         self._status.setText(f"Restored from {path}")
 
     def _save(self):

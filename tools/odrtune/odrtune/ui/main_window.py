@@ -1,8 +1,8 @@
 """Top-level window: a connect bar plus a tab per feature. Panels are given
 the active Device when the connect panel reports a connection.
 
-Panels are added in later tasks; this shell wires the connect signal to a
-set_device() fan-out so adding a panel is one line."""
+The connect signal is wired to a set_device() fan-out, so each feature panel
+registered via add_panel() receives the active Device on connect."""
 from __future__ import annotations
 
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QTabWidget)

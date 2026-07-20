@@ -42,7 +42,13 @@ class CalibrationPanel(QWidget):
     def _poll(self):
         if self._runner is None:
             return
-        result = self._runner.poll()
+        try:
+            result = self._runner.poll()
+        except Exception as exc:  # noqa: BLE001 - USB hiccup shouldn't crash the UI
+            self._timer.stop()
+            self._btn.setEnabled(True)
+            self._status.setText(f"Calibration error: {exc}")
+            return
         if result == "running":
             return
         self._timer.stop()

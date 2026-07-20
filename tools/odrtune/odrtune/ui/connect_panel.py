@@ -1,4 +1,4 @@
-"""Connect/scan panel. Emits `connected(Device)` when a device is opened.
+"""Connect panel. Emits `connected(Device)` when a device is opened.
 Connection uses core.device.connect(); failures are shown, not raised."""
 from __future__ import annotations
 

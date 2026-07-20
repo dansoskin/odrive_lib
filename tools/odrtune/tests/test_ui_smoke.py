@@ -89,3 +89,20 @@ def test_tuning_panel_applies_gain_and_steps(app):
     panel._record()
     t, y = panel._step.data()
     assert len(t) == 1
+
+
+def test_config_panel_backup_restore_save(app, tmp_path):
+    from odrtune.ui.config_panel import ConfigPanel
+    from tests.fake_odrive import FakeODrive
+    from odrtune.core.device import Device
+
+    raw = FakeODrive()
+    panel = ConfigPanel()
+    panel.set_device(Device(raw))
+    p = str(tmp_path / "cfg.json")
+    panel.backup_to(p)
+    raw.axis0.controller.config.pos_gain = 999.0
+    panel.restore_from(p)
+    assert raw.axis0.controller.config.pos_gain == 20.0  # restored original
+    panel._save()
+    assert raw.saved is True

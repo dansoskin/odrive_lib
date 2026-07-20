@@ -606,11 +606,24 @@ def test_calibration_reports_failure():
     dev = Device(raw)
     runner = CalibrationRunner(dev)
     runner.start()
-    raw.axis0.current_state = 1
-    raw.axis0.procedure_result = 5  # non-zero == failure
+    raw.axis0.current_state = 3          # entered calibration
+    assert runner.poll() == "running"
+    raw.axis0.current_state = 1          # back to IDLE
+    raw.axis0.procedure_result = 5       # non-zero == failure
     result = runner.poll()
     assert result == "failed"
     assert runner.last_error["procedure_result"] == 5
+
+
+def test_calibration_ignores_stale_result_before_leaving_idle():
+    raw = FakeODrive()
+    dev = Device(raw)
+    runner = CalibrationRunner(dev)
+    runner.start()
+    raw.axis0.current_state = 1          # still IDLE right after request
+    raw.axis0.procedure_result = 5       # stale value from a prior run
+    assert runner.poll() == "running"    # must NOT report failed yet
+    assert runner.running is True
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -653,13 +666,14 @@ class CalibrationRunner:
             self._left_idle = True
             return "running"
         if not self._left_idle:
-            # still in the initial IDLE tick before calibration kicked in
+            # initial IDLE tick before calibration engages; procedure_result
+            # may still hold a stale value from a prior run - ignore it.
             return "running"
-        # back to IDLE after having left it -> sequence finished
-        self.running = False
         pr = self._dev.procedure_result()
         if pr == 0:
+            self.running = False
             return "success"
+        self.running = False
         self.last_error = {"procedure_result": pr, **self._dev.errors()}
         return "failed"
 ```
@@ -667,7 +681,7 @@ class CalibrationRunner:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `cd tools/odrtune && python -m pytest tests/test_calibration.py -v`
-Expected: 2 passed.
+Expected: 3 passed.
 
 - [ ] **Step 5: Commit**
 
@@ -1447,7 +1461,7 @@ def test_full_window_has_all_tabs(app):
 - [ ] **Step 3: Run the complete test suite**
 
 Run: `cd tools/odrtune && QT_QPA_PLATFORM=offscreen python -m pytest -v`
-Expected: all tests pass (device 3, config_io 4, sampler 2, calibration 2, step_response 1, ui_smoke 7 = 19 passed).
+Expected: all tests pass (device 3, config_io 4, sampler 2, calibration 3, step_response 1, ui_smoke 7 = 20 passed).
 
 - [ ] **Step 4: Write `tools/odrtune/README.md`**
 
@@ -1509,6 +1523,6 @@ git commit -m "feat(py): wire all panels into main window; add tool README"
 
 **Type consistency:** `Device` methods (`fw_version`, `serial_hex`, `feedback`, `get_gains`, `set_gains`, `set_closed_loop`, `set_input_pos/vel/torque`, `set_requested_state`, `current_state`, `procedure_result`, `errors`, `save`, `erase`, `reboot`) are defined in Task 3 and used identically in Tasks 4–12. `Sampler.series/sample/channels`, `CalibrationRunner.start/poll/running/last_error`, `StepResponse.begin/record/data/target`, `config_io.backup/restore/save_to_nvm`, and `MainWindow.add_panel/_set_device/_tabs` all match between definition and use. Feedback dict keys (`pos`, `vel`, `iq_measured`, `fet_temp`, `bus_voltage`, …) match between `Device.feedback` (Task 3), `Sampler` (Task 5), `StepResponse` (Task 7), and `PlotsPanel` (Task 9). ✅
 
-**Test count note:** ui_smoke grows to 7 tests (2 in Task 8, +1 each in Tasks 9/10/11/12, +1 in Task 13), matching the Task 13 total of 19.
+**Test count note:** ui_smoke grows to 7 tests (2 in Task 8, +1 each in Tasks 9/10/11/12, +1 in Task 13); with calibration's 3 core tests the Task 13 total is 20.
 
 **Fw-attribute risk:** Exact odrive attribute paths (e.g. `pos_vel_mapper.pos_rel`, `motor.foc.Iq_measured`) are isolated in `core/device.py`. If a real ODrive on the bench uses slightly different paths for fw 0.6.x, only that file changes — verify against the connected device during first bring-up.

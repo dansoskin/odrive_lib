@@ -4,7 +4,7 @@ import sys
 
 def main() -> int:
     from PySide6.QtWidgets import QApplication
-    from odrtune.ui.main_window import MainWindow
+    from ui.main_window import MainWindow
 
     app = QApplication(sys.argv)
     win = MainWindow()

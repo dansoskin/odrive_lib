@@ -6,7 +6,7 @@ right after the request, start() latches a 'started' flag and poll() only
 evaluates completion after it has observed the axis leave IDLE."""
 from __future__ import annotations
 
-from odrtune.core.device import Device, IDLE, FULL_CALIBRATION_SEQUENCE
+from core.device import Device, IDLE, FULL_CALIBRATION_SEQUENCE
 
 
 class CalibrationRunner:

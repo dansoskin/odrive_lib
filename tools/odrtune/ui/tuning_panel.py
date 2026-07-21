@@ -11,7 +11,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QSlider,
                                QLabel, QPushButton, QDoubleSpinBox)
 
-from odrtune.core.step_response import StepResponse
+from core.step_response import StepResponse
 
 # (name, max_value, resolution) -> slider int = value / resolution
 _GAINS = [

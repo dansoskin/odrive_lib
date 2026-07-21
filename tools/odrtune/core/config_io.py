@@ -5,7 +5,7 @@ The snapshot intentionally captures the tunable subset we expose in the GUI
 files."""
 from __future__ import annotations
 
-from odrtune.core.device import Device
+from core.device import Device
 
 SCHEMA_VERSION = 1
 

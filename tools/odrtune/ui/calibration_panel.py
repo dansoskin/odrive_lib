@@ -5,7 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QLabel)
 
-from odrtune.core.calibration import CalibrationRunner
+from core.calibration import CalibrationRunner
 
 
 class CalibrationPanel(QWidget):

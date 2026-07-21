@@ -6,12 +6,13 @@ the CAN C library in this repo.
 ## Install
 ```bash
 cd tools/odrtune
-python -m pip install -e ".[dev]"
+python -m pip install -r requirements.txt
 ```
 
 ## Run
 ```bash
-odrtune            # or: python -m odrtune
+cd tools/odrtune
+python __main__.py        # or, from the repo root: python tools/odrtune
 ```
 Click **Connect** (ODrive plugged in over USB), then use the tabs:
 - **Plots** — live pos/vel/Iq/temp/bus-voltage.
@@ -19,10 +20,13 @@ Click **Connect** (ODrive plugged in over USB), then use the tabs:
 - **Tuning** — live gain sliders (pos/vel/vel-integrator) + position step response.
 - **Config** — backup/restore config JSON and save to the ODrive's NVM.
 
-## Tests (no hardware needed)
-```bash
-QT_QPA_PLATFORM=offscreen python -m pytest -v
+## Layout
 ```
-Core logic is tested against an in-memory fake ODrive; GUI panels are built
-headlessly with Qt's offscreen platform. End-to-end motor behavior is verified
-manually against a real ODrive.
+tools/odrtune/
+  __main__.py   # entry point (launches the Qt app)
+  core/         # Qt-free ODrive logic (device, config_io, sampler,
+                #   calibration, step_response)
+  ui/           # PySide6 panels + main window
+```
+`core/` isolates all firmware-specific ODrive attribute paths in `core/device.py`,
+so a firmware tweak touches one file.

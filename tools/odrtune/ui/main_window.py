@@ -7,11 +7,11 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QTabWidget)
 
-from odrtune.ui.connect_panel import ConnectPanel
-from odrtune.ui.plots_panel import PlotsPanel
-from odrtune.ui.calibration_panel import CalibrationPanel
-from odrtune.ui.tuning_panel import TuningPanel
-from odrtune.ui.config_panel import ConfigPanel
+from ui.connect_panel import ConnectPanel
+from ui.plots_panel import PlotsPanel
+from ui.calibration_panel import CalibrationPanel
+from ui.tuning_panel import TuningPanel
+from ui.config_panel import ConfigPanel
 
 
 class MainWindow(QMainWindow):

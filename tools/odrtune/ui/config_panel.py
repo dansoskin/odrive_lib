@@ -7,7 +7,7 @@ import json
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                                QLabel, QFileDialog)
 
-from odrtune.core.config_io import backup, restore, save_to_nvm
+from core.config_io import backup, restore, save_to_nvm
 
 
 class ConfigPanel(QWidget):

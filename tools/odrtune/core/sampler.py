@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import deque
 
-from odrtune.core.device import Device
+from core.device import Device
 
 CHANNELS = ("pos", "vel", "iq_setpoint", "iq_measured",
             "fet_temp", "motor_temp", "bus_voltage", "bus_current")

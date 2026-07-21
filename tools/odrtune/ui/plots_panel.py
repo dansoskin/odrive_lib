@@ -8,7 +8,7 @@ import pyqtgraph as pg
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QWidget, QVBoxLayout
 
-from odrtune.core.sampler import Sampler
+from core.sampler import Sampler
 
 # (channel, label) groups plotted on stacked axes
 _PLOTS = [

@@ -5,7 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (QWidget, QHBoxLayout, QPushButton, QLabel)
 
-from odrtune.core import device as device_mod
+from core import device as device_mod
 
 
 class ConnectPanel(QWidget):

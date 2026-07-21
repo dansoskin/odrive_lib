@@ -2,7 +2,7 @@
 tuning by eye. GUI-agnostic: begin() then record() on a timer, then data()."""
 from __future__ import annotations
 
-from odrtune.core.device import Device
+from core.device import Device
 
 _COMMAND = {
     "pos": lambda dev, v: dev.set_input_pos(v),

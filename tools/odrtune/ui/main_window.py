@@ -96,6 +96,9 @@ class MainWindow(QMainWindow):
     def _tick(self):
         if self._sampler is None:
             return
+        self._control.update_state()   # keep the state readout live even when paused
+        if self._plots.paused():
+            return                     # freeze graphs/sampling for inspection
         t = time.monotonic() - self._t0
         try:
             self._sampler.sample(t=t)
@@ -104,6 +107,5 @@ class MainWindow(QMainWindow):
         self._bus.refresh(self._sampler)
         self._fet.refresh(self._sampler)
         self._plots.refresh(self._sampler)
-        self._control.update_state()
         window = self._plots.window_seconds()
         self._master.setXRange(max(0.0, t - window), t, padding=0)

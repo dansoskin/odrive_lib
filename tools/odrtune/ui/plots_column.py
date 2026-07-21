@@ -10,7 +10,7 @@ refresh(sampler) each tick and X-links every plot in `plots`."""
 from __future__ import annotations
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                               QDoubleSpinBox, QScrollArea)
+                               QDoubleSpinBox, QScrollArea, QCheckBox)
 
 from ui.time_plot import TimePlot
 
@@ -38,6 +38,10 @@ class PlotsColumn(QWidget):
         self._window.setValue(10.0)
         self._window.setSuffix(" s")
         bar.addWidget(self._window)
+        self._pause = QCheckBox("Pause")
+        self._pause.setToolTip("Freeze the graphs to inspect them "
+                               "(sampling stops; pan/zoom/cursor still work)")
+        bar.addWidget(self._pause)
         bar.addStretch(1)
         root.addLayout(bar)
 
@@ -63,6 +67,9 @@ class PlotsColumn(QWidget):
 
     def window_seconds(self) -> float:
         return self._window.value()
+
+    def paused(self) -> bool:
+        return self._pause.isChecked()
 
     def refresh(self, sampler) -> None:
         for p in self._plots:

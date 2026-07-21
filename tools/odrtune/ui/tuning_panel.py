@@ -23,6 +23,9 @@ from core.step_response import StepResponse
 
 # group title -> [(key, label, unit suffix, decimals, max value), ...]
 _LOOPS = [
+    ("Feedback (encoder)", [
+        ("encoder_bandwidth", "Encoder bandwidth", " Hz", 1, 100000.0),
+    ]),
     ("Current loop", [
         ("current_control_bandwidth", "Bandwidth", " rad/s", 1, 100000.0),
         ("current_soft_max", "Current soft max", " A", 2, 1000.0),

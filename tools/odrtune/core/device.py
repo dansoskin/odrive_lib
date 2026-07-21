@@ -171,6 +171,7 @@ class Device:
         c = self._axis.controller.config
         m = self._axis.config.motor
         return {
+            "encoder_bandwidth": self._axis.config.encoder_bandwidth,
             "pos_gain": c.pos_gain,
             "vel_gain": c.vel_gain,
             "vel_integrator_gain": c.vel_integrator_gain,
@@ -183,6 +184,8 @@ class Device:
     def set_tuning(self, **kw) -> None:
         c = self._axis.controller.config
         m = self._axis.config.motor
+        if "encoder_bandwidth" in kw:
+            self._axis.config.encoder_bandwidth = kw["encoder_bandwidth"]
         if "pos_gain" in kw:
             c.pos_gain = kw["pos_gain"]
         if "vel_gain" in kw:

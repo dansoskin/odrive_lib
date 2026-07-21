@@ -18,8 +18,10 @@ Click **Connect** (ODrive plugged in over USB). The **top bar** holds the connec
 controls plus two small monitor graphs (bus voltage, FET temperature). Below,
 the window is split: feature tabs on the **left**, a persistent **plots column
 on the right** that stays visible on every tab. The plots column holds the
-global **Window (s)** control and the four large graphs — position, velocity,
-current (Iq), torque — each overlaying the **setpoint and measured** traces.
+global **Window (s)** control, a **Pause** toggle (freezes sampling so you can
+inspect — pan/zoom/cursor still work), and the four large graphs — position,
+velocity, current (Iq), torque — each overlaying the **setpoint and measured**
+traces.
 
 Left-hand tabs:
 - **Control** — requested-state dropdown + live current-state readout; a control
@@ -32,10 +34,12 @@ Left-hand tabs:
   with the ramp/acceleration fields relevant to the chosen mode (velocity ramp
   rate, trajectory vel/accel/decel limits, filter bandwidth, torque ramp rate).
 - **Calibration** — run the full motor+encoder calibration and see the result.
-- **Tuning** — adjust each control loop independently: **current** (bandwidth +
-  soft current limit), **velocity** (gain, integrator gain, vel limit,
-  integrator limit), **position** (gain); plus a position/velocity step-response
-  test. Tune inner-to-outer: current → velocity → position.
+- **Tuning** — adjust each control loop independently: **feedback** (encoder
+  bandwidth — the pos/vel estimator filter; raise for snappier feedback, lower
+  to cut velocity noise, e.g. for hall sensors), **current** (bandwidth + soft
+  current limit), **velocity** (gain, integrator gain, vel limit, integrator
+  limit), **position** (gain); plus a position/velocity step-response test. Tune
+  inner-to-outer: encoder bandwidth → current → velocity → position.
 - **Config** — backup/restore config JSON and save to the ODrive's NVM.
 
 Each graph has a header showing its latest value(s) and three controls: **auto Y**

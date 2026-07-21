@@ -166,40 +166,68 @@ class Device:
         if "trap_decel_limit" in kw:
             tt.decel_limit = kw["trap_decel_limit"]
 
-    # --- per-loop tuning (current / velocity / position) ---
-    def get_tuning(self) -> dict:
-        c = self._axis.controller.config
-        m = self._axis.config.motor
+    # --- per-loop tuning (feedback / current / velocity / position) ---
+    def _tuning_targets(self) -> dict:
+        """Map each tuning key to the (object, attribute) it lives at, so a
+        firmware-path change touches only this table."""
+        a = self._axis
+        c = a.controller.config
+        m = a.config.motor
         return {
-            "encoder_bandwidth": self._axis.config.encoder_bandwidth,
-            "pos_gain": c.pos_gain,
-            "vel_gain": c.vel_gain,
-            "vel_integrator_gain": c.vel_integrator_gain,
-            "vel_limit": c.vel_limit,
-            "vel_integrator_limit": c.vel_integrator_limit,
-            "current_control_bandwidth": m.current_control_bandwidth,
-            "current_soft_max": m.current_soft_max,
+            # feedback / estimator
+            "encoder_bandwidth": (a.config, "encoder_bandwidth"),
+            "commutation_encoder_bandwidth": (a.config, "commutation_encoder_bandwidth"),
+            # current / torque loop
+            "current_control_bandwidth": (m, "current_control_bandwidth"),
+            "current_soft_max": (m, "current_soft_max"),
+            "current_hard_max": (m, "current_hard_max"),
+            "current_slew_rate_limit": (m, "current_slew_rate_limit"),
+            # high-speed current feedforwards
+            "wL_FF_enable": (m, "wL_FF_enable"),
+            "bEMF_FF_enable": (m, "bEMF_FF_enable"),
+            "dI_dt_FF_enable": (m, "dI_dt_FF_enable"),
+            # velocity loop
+            "vel_gain": (c, "vel_gain"),
+            "vel_integrator_gain": (c, "vel_integrator_gain"),
+            "vel_integrator_limit": (c, "vel_integrator_limit"),
+            "vel_integrator_decay_gain": (c, "vel_integrator_decay_gain"),
+            "vel_limit": (c, "vel_limit"),
+            # position loop + inertia feedforward
+            "pos_gain": (c, "pos_gain"),
+            "inertia": (c, "inertia"),
+            # gain scheduling
+            "enable_gain_scheduling": (c, "enable_gain_scheduling"),
+            "gain_scheduling_width": (c, "gain_scheduling_width"),
+            "gain_scheduling_min_ratio": (c, "gain_scheduling_min_ratio"),
+            # motor model (normally from calibration; needed for FF)
+            "torque_constant": (m, "torque_constant"),
+            "phase_resistance": (m, "phase_resistance"),
+            "phase_inductance": (m, "phase_inductance"),
+            "ff_pm_flux_linkage": (m, "ff_pm_flux_linkage"),
+            "motor_model_l_d": (m, "motor_model_l_d"),
+            "motor_model_l_q": (m, "motor_model_l_q"),
         }
 
+    def get_tuning(self) -> dict:
+        """Read every tuning parameter this firmware exposes. Keys whose
+        attribute is absent on the connected device are simply omitted."""
+        out = {}
+        for key, (obj, attr) in self._tuning_targets().items():
+            try:
+                out[key] = getattr(obj, attr)
+            except Exception:  # noqa: BLE001 - attr not present on this fw/config
+                pass
+        return out
+
     def set_tuning(self, **kw) -> None:
-        c = self._axis.controller.config
-        m = self._axis.config.motor
-        if "encoder_bandwidth" in kw:
-            self._axis.config.encoder_bandwidth = kw["encoder_bandwidth"]
-        if "pos_gain" in kw:
-            c.pos_gain = kw["pos_gain"]
-        if "vel_gain" in kw:
-            c.vel_gain = kw["vel_gain"]
-        if "vel_integrator_gain" in kw:
-            c.vel_integrator_gain = kw["vel_integrator_gain"]
-        if "vel_limit" in kw:
-            c.vel_limit = kw["vel_limit"]
-        if "vel_integrator_limit" in kw:
-            c.vel_integrator_limit = kw["vel_integrator_limit"]
-        if "current_control_bandwidth" in kw:
-            m.current_control_bandwidth = kw["current_control_bandwidth"]
-        if "current_soft_max" in kw:
-            m.current_soft_max = kw["current_soft_max"]
+        targets = self._tuning_targets()
+        for key, value in kw.items():
+            if key in targets:
+                obj, attr = targets[key]
+                try:
+                    setattr(obj, attr, value)
+                except Exception:  # noqa: BLE001
+                    pass
 
     # --- persistence ---
     def save(self) -> None:

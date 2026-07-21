@@ -34,12 +34,17 @@ Left-hand tabs:
   with the ramp/acceleration fields relevant to the chosen mode (velocity ramp
   rate, trajectory vel/accel/decel limits, filter bandwidth, torque ramp rate).
 - **Calibration** — run the full motor+encoder calibration and see the result.
-- **Tuning** — adjust each control loop independently: **feedback** (encoder
-  bandwidth — the pos/vel estimator filter; raise for snappier feedback, lower
-  to cut velocity noise, e.g. for hall sensors), **current** (bandwidth + soft
-  current limit), **velocity** (gain, integrator gain, vel limit, integrator
-  limit), **position** (gain); plus a position/velocity step-response test. Tune
-  inner-to-outer: encoder bandwidth → current → velocity → position.
+- **Tuning** — adjust every control-loop parameter independently, grouped
+  inner-to-outer (scrollable): **feedback** (encoder + commutation-encoder
+  bandwidth), **current loop** (bandwidth, soft/hard current max, current slew
+  limit), **current feedforward** (cross-coupling wL, back-EMF, dI/dt enables for
+  high-speed tracking), **velocity loop** (gain, integrator gain + limit + decay,
+  vel limit), **position loop** (gain, inertia accel-FF), **gain scheduling**
+  (enable + width + min ratio), and **motor model** (torque constant, phase R/L,
+  PM flux linkage, model L_d/L_q — normally from calibration). Plus a
+  position/velocity step-response test. Tune inner-to-outer: feedback → current
+  (+FF) → velocity → position. Parameters your firmware doesn't expose are shown
+  disabled.
 - **Config** — backup/restore config JSON and save to the ODrive's NVM.
 
 Each graph has a header showing its latest value(s) and three controls: **auto Y**

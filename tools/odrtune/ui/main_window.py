@@ -1,24 +1,26 @@
 """Top-level window.
 
-Layout: a connect bar, then a persistent top panel (state/mode controls +
-small bus-voltage/FET-temp monitor graphs + the global time-window spinbox),
-then a tab per feature. The top panel and its graphs stay visible on every tab.
+Layout: a connect bar across the top, then a horizontal splitter with the
+feature tabs (Control, Calibration, Tuning, Config) on the LEFT and a persistent
+plots column on the RIGHT. The plots column (window control + bus-voltage/FET
+monitors + position/velocity/Iq/torque graphs) stays visible on every tab.
 
 MainWindow owns the single Sampler and the single QTimer that drives it, so
-every graph shares one time base. All live graphs (top panel + Plots tab) are
-X-linked to a master, and each tick sets the master's X range to the most
-recent `window` seconds — a rolling view that keeps every graph aligned."""
+every graph shares one time base. All graphs are X-linked to a master, and each
+tick sets the master's X range to the most recent `window` seconds — a rolling
+view that keeps every graph aligned."""
 from __future__ import annotations
 
 import time
 
-from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QTabWidget)
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QTabWidget,
+                               QSplitter)
 
 from core.sampler import Sampler
 from ui.connect_panel import ConnectPanel
-from ui.top_panel import TopPanel
-from ui.plots_panel import PlotsPanel
+from ui.plots_column import PlotsColumn
+from ui.control_panel import ControlPanel
 from ui.calibration_panel import CalibrationPanel
 from ui.tuning_panel import TuningPanel
 from ui.config_panel import ConfigPanel
@@ -36,25 +38,31 @@ class MainWindow(QMainWindow):
         root = QVBoxLayout(central)
         self._connect = ConnectPanel()
         self._connect.connected.connect(self._set_device)
-        self._top = TopPanel()
-        self._plots = PlotsPanel()
-        self._tabs = QTabWidget()
-
         root.addWidget(self._connect)
-        root.addWidget(self._top)
-        root.addWidget(self._tabs, 1)
-        self.setCentralWidget(central)
 
-        # Tabs. The Plots tab refreshes from the shared sampler (no set_device);
-        # the others are device listeners.
-        self._tabs.addTab(self._plots, "Plots")
+        split = QSplitter(Qt.Horizontal)
+
+        # LEFT: feature tabs
+        self._tabs = QTabWidget()
+        self._control = ControlPanel()
+        self._add_listener_tab("Control", self._control)
         self._add_listener_tab("Calibration", CalibrationPanel())
         self._add_listener_tab("Tuning", TuningPanel())
         self._add_listener_tab("Config", ConfigPanel())
-        self._device_listeners.append(self._top)
+        split.addWidget(self._tabs)
 
-        # Share one time axis across every live graph: link all to a master.
-        self._live_plots = list(self._top.plots) + list(self._plots.plots)
+        # RIGHT: persistent plots column
+        self._plots = PlotsColumn()
+        split.addWidget(self._plots)
+        split.setStretchFactor(0, 0)
+        split.setStretchFactor(1, 1)
+        split.setSizes([380, 720])
+
+        root.addWidget(split, 1)
+        self.setCentralWidget(central)
+
+        # Share one time axis across every graph: link all to a master.
+        self._live_plots = list(self._plots.plots)
         self._master = self._live_plots[0].getPlotItem()
         for p in self._live_plots[1:]:
             p.getPlotItem().setXLink(self._master)
@@ -82,7 +90,7 @@ class MainWindow(QMainWindow):
             self._sampler.sample(t=t)
         except Exception:  # noqa: BLE001 - a USB hiccup shouldn't kill the UI
             return
-        self._top.refresh(self._sampler)
         self._plots.refresh(self._sampler)
-        window = self._top.window_seconds()
+        self._control.update_state()
+        window = self._plots.window_seconds()
         self._master.setXRange(max(0.0, t - window), t, padding=0)

@@ -130,8 +130,13 @@ class MainWindow(QMainWindow):
             err = self._device.errors()
             active, disarm = err.get("active_errors", 0), err.get("disarm_reason", 0)
             if active or disarm:
+                warn = ("" if self._device.fw_matches_error_decode()
+                        else "  [decode assumes fw 0.6.x]")
                 self._err_lbl.setText(
-                    f"Error: active=0x{active:X}  disarm=0x{disarm:X}")
+                    f"Error: active=0x{active:X} "
+                    f"({device_mod.decode_error(active)})  "
+                    f"disarm=0x{disarm:X} "
+                    f"({device_mod.decode_error(disarm)}){warn}")
             else:
                 self._err_lbl.setText("Error: none")
         except Exception:  # noqa: BLE001 - USB hiccup shouldn't crash the UI

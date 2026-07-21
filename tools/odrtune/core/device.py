@@ -39,6 +39,53 @@ def state_name(value: int) -> str:
     return str(value)
 
 
+# ODriveError bitmask (used by axis.active_errors and axis.disarm_reason).
+# This table targets the firmware line below; if a connected device reports a
+# different major.minor, decoded names are flagged as unverified.
+ERROR_DECODE_FW = (0, 6)
+
+ODRIVE_ERRORS = {
+    0x00000001: "INITIALIZING",
+    0x00000002: "SYSTEM_LEVEL",
+    0x00000004: "TIMING_ERROR",
+    0x00000008: "MISSING_ESTIMATE",
+    0x00000010: "BAD_CONFIG",
+    0x00000020: "DRV_FAULT",
+    0x00000040: "MISSING_INPUT",
+    0x00000100: "DC_BUS_OVER_VOLTAGE",
+    0x00000200: "DC_BUS_UNDER_VOLTAGE",
+    0x00000400: "DC_BUS_OVER_CURRENT",
+    0x00000800: "DC_BUS_OVER_REGEN_CURRENT",
+    0x00001000: "CURRENT_LIMIT_VIOLATION",
+    0x00002000: "MOTOR_OVER_TEMP",
+    0x00004000: "INVERTER_OVER_TEMP",
+    0x00008000: "VELOCITY_LIMIT_VIOLATION",
+    0x00010000: "POSITION_LIMIT_VIOLATION",
+    0x01000000: "WATCHDOG_TIMER_EXPIRED",
+    0x02000000: "ESTOP_REQUESTED",
+    0x04000000: "SPINOUT_DETECTED",
+    0x08000000: "BRAKE_RESISTOR_DISARMED",
+    0x10000000: "THERMISTOR_DISCONNECTED",
+    0x40000000: "CALIBRATION_ERROR",
+}
+
+
+def decode_error(value: int) -> str:
+    """Decode an ODriveError bitmask into 'NAME | NAME' (or 'none'). Unmapped
+    bits are reported as UNKNOWN(0x..)."""
+    if not value:
+        return "none"
+    names = []
+    remaining = int(value)
+    for bit, name in ODRIVE_ERRORS.items():
+        if value & bit:
+            names.append(name)
+            remaining &= ~bit
+    if remaining:
+        names.append(f"UNKNOWN(0x{remaining:X})")
+    return " | ".join(names)
+
+
 def _get(obj, attr):
     """Read an attribute, returning NaN if this firmware doesn't expose it
     (so an absent effective-setpoint just shows a gap instead of crashing)."""
@@ -72,6 +119,11 @@ class Device:
 
     def serial_hex(self) -> str:
         return f"0x{self._raw.serial_number:X}"
+
+    def fw_matches_error_decode(self) -> bool:
+        """True if the device firmware major.minor matches the error-decode table."""
+        major, minor, _rev = self.fw_version()
+        return (major, minor) == ERROR_DECODE_FW
 
     # --- feedback snapshot ---
     def feedback(self) -> dict:

@@ -15,9 +15,11 @@ cd tools/odrtune
 python __main__.py        # or, from the repo root: python tools/odrtune
 ```
 Click **Connect** (ODrive plugged in over USB). The **top bar** holds the connect
-controls, a live **driver state + error** readout, an **E-STOP** button (disarms
-the motor — requests IDLE), and two small monitor graphs (bus voltage, FET
-temperature). Below,
+controls, a live **driver state + error** readout (the error shows both the raw
+hex bitfield and decoded names, e.g. `0x1000 (CURRENT_LIMIT_VIOLATION)`; the
+decode table targets fw 0.6.x and appends a warning if the connected firmware's
+major.minor differs), an **E-STOP** button (disarms the motor — requests IDLE),
+and two small monitor graphs (bus voltage, FET temperature). Below,
 the window is split: feature tabs on the **left**, a persistent **plots column
 on the right** that stays visible on every tab. The plots column holds the
 global **Window (s)** control, a **Pause** toggle (freezes sampling so you can

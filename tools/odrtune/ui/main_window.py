@@ -1,13 +1,23 @@
-"""Top-level window: a connect bar plus a tab per feature. Panels are given
-the active Device when the connect panel reports a connection.
+"""Top-level window.
 
-The connect signal is wired to a set_device() fan-out, so each feature panel
-registered via add_panel() receives the active Device on connect."""
+Layout: a connect bar, then a persistent top panel (state/mode controls +
+small bus-voltage/FET-temp monitor graphs + the global time-window spinbox),
+then a tab per feature. The top panel and its graphs stay visible on every tab.
+
+MainWindow owns the single Sampler and the single QTimer that drives it, so
+every graph shares one time base. All live graphs (top panel + Plots tab) are
+X-linked to a master, and each tick sets the master's X range to the most
+recent `window` seconds — a rolling view that keeps every graph aligned."""
 from __future__ import annotations
 
+import time
+
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QTabWidget)
 
+from core.sampler import Sampler
 from ui.connect_panel import ConnectPanel
+from ui.top_panel import TopPanel
 from ui.plots_panel import PlotsPanel
 from ui.calibration_panel import CalibrationPanel
 from ui.tuning_panel import TuningPanel
@@ -15,36 +25,64 @@ from ui.config_panel import ConfigPanel
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, interval_ms: int = 50):
         super().__init__(parent)
         self.setWindowTitle("odrtune")
-        self._device = None
+        self._sampler = None
+        self._t0 = 0.0
         self._device_listeners = []
 
         central = QWidget()
         root = QVBoxLayout(central)
         self._connect = ConnectPanel()
         self._connect.connected.connect(self._set_device)
+        self._top = TopPanel()
+        self._plots = PlotsPanel()
         self._tabs = QTabWidget()
+
         root.addWidget(self._connect)
+        root.addWidget(self._top)
         root.addWidget(self._tabs, 1)
         self.setCentralWidget(central)
 
-        self.add_panel("Plots", PlotsPanel())
-        self.add_panel("Calibration", CalibrationPanel())
-        self.add_panel("Tuning", TuningPanel())
-        self.add_panel("Config", ConfigPanel())
+        # Tabs. The Plots tab refreshes from the shared sampler (no set_device);
+        # the others are device listeners.
+        self._tabs.addTab(self._plots, "Plots")
+        self._add_listener_tab("Calibration", CalibrationPanel())
+        self._add_listener_tab("Tuning", TuningPanel())
+        self._add_listener_tab("Config", ConfigPanel())
+        self._device_listeners.append(self._top)
 
-    def add_panel(self, title, panel):
-        """Add a feature tab. If the panel has set_device(), it is registered
-        to receive the active Device on connect."""
+        # Share one time axis across every live graph: link all to a master.
+        self._live_plots = list(self._top.plots) + list(self._plots.plots)
+        self._master = self._live_plots[0].getPlotItem()
+        for p in self._live_plots[1:]:
+            p.getPlotItem().setXLink(self._master)
+
+        self._timer = QTimer(self)
+        self._timer.setInterval(interval_ms)
+        self._timer.timeout.connect(self._tick)
+
+    def _add_listener_tab(self, title, panel):
         self._tabs.addTab(panel, title)
-        if hasattr(panel, "set_device"):
-            self._device_listeners.append(panel)
-            if self._device is not None:
-                panel.set_device(self._device)
+        self._device_listeners.append(panel)
 
     def _set_device(self, dev):
-        self._device = dev
+        self._sampler = Sampler(dev, maxlen=6000)
+        self._t0 = time.monotonic()
         for p in self._device_listeners:
             p.set_device(dev)
+        self._timer.start()
+
+    def _tick(self):
+        if self._sampler is None:
+            return
+        t = time.monotonic() - self._t0
+        try:
+            self._sampler.sample(t=t)
+        except Exception:  # noqa: BLE001 - a USB hiccup shouldn't kill the UI
+            return
+        self._top.refresh(self._sampler)
+        self._plots.refresh(self._sampler)
+        window = self._top.window_seconds()
+        self._master.setXRange(max(0.0, t - window), t, padding=0)

@@ -8,6 +8,28 @@ IDLE = 1
 FULL_CALIBRATION_SEQUENCE = 3
 CLOSED_LOOP_CONTROL = 8
 
+# ControlMode ints (fw 0.6.x)
+CONTROL_MODE_VOLTAGE = 0
+CONTROL_MODE_TORQUE = 1
+CONTROL_MODE_VELOCITY = 2
+CONTROL_MODE_POSITION = 3
+
+# Human-readable option maps for the GUI dropdowns (label -> firmware int).
+AXIS_STATES = {
+    "Idle": IDLE,
+    "Closed loop control": CLOSED_LOOP_CONTROL,
+    "Full calibration": FULL_CALIBRATION_SEQUENCE,
+    "Motor calibration": 4,
+    "Encoder offset calibration": 7,
+    "Encoder index search": 6,
+}
+CONTROL_MODES = {
+    "Position": CONTROL_MODE_POSITION,
+    "Velocity": CONTROL_MODE_VELOCITY,
+    "Torque": CONTROL_MODE_TORQUE,
+    "Voltage": CONTROL_MODE_VOLTAGE,
+}
+
 
 def connect(timeout: float = 15.0):
     """Find and return the first ODrive over USB. Raises on timeout."""
@@ -39,9 +61,13 @@ class Device:
         a = self._axis
         return {
             "pos": a.pos_vel_mapper.pos_rel,
+            "pos_setpoint": a.controller.input_pos,
             "vel": a.pos_vel_mapper.vel,
+            "vel_setpoint": a.controller.input_vel,
             "iq_setpoint": a.motor.foc.Iq_setpoint,
             "iq_measured": a.motor.foc.Iq_measured,
+            "torque_setpoint": a.controller.torque_setpoint,
+            "torque_estimate": a.motor.torque_estimate,
             "fet_temp": a.motor.fet_thermistor.temperature,
             "motor_temp": a.motor.motor_thermistor.temperature,
             "bus_voltage": self._raw.vbus_voltage,
@@ -52,8 +78,17 @@ class Device:
     def set_requested_state(self, state: int) -> None:
         self._axis.requested_state = state
 
+    def get_requested_state(self) -> int:
+        return self._axis.requested_state
+
     def current_state(self) -> int:
         return self._axis.current_state
+
+    def get_control_mode(self) -> int:
+        return self._axis.controller.config.control_mode
+
+    def set_control_mode(self, mode: int) -> None:
+        self._axis.controller.config.control_mode = mode
 
     def procedure_result(self) -> int:
         return self._axis.procedure_result

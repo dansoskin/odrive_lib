@@ -1,54 +1,36 @@
-"""Live scrolling plots of pos/vel/Iq/temperature/bus voltage using pyqtgraph.
-Polls a Sampler on a QTimer once a Device is set."""
+"""Plots tab: the large setpoint+measured graphs for position, velocity,
+current (Iq) and torque. Sampling and the shared time base are owned by
+MainWindow, which calls refresh(sampler) on each tick; these plots are
+X-linked to the rest of the app so they pan/zoom together on time."""
 from __future__ import annotations
 
-import time
-
-import pyqtgraph as pg
-from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QWidget, QVBoxLayout
 
-from core.sampler import Sampler
+from ui.time_plot import TimePlot
 
-# (channel, label) groups plotted on stacked axes
-_PLOTS = [
-    ("pos", "Position (turns)"),
-    ("vel", "Velocity (turns/s)"),
-    ("iq_measured", "Iq measured (A)"),
-    ("fet_temp", "FET temp (C)"),
-    ("bus_voltage", "Bus voltage (V)"),
+# (title, measured_key, setpoint_key)
+_SPECS = [
+    ("Position (turns)", "pos", "pos_setpoint"),
+    ("Velocity (turns/s)", "vel", "vel_setpoint"),
+    ("Current Iq (A)", "iq_measured", "iq_setpoint"),
+    ("Torque (Nm)", "torque_estimate", "torque_setpoint"),
 ]
 
 
 class PlotsPanel(QWidget):
-    def __init__(self, parent=None, interval_ms: int = 50):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self._sampler = None
-        self._t0 = 0.0
         layout = QVBoxLayout(self)
-        self._curves = {}
-        win = pg.GraphicsLayoutWidget()
-        layout.addWidget(win)
-        for i, (chan, label) in enumerate(_PLOTS):
-            plot = win.addPlot(row=i, col=0, title=label)
-            plot.showGrid(x=True, y=True)
-            self._curves[chan] = plot.plot(pen=pg.mkPen(width=2))
-        self._timer = QTimer(self)
-        self._timer.setInterval(interval_ms)
-        self._timer.timeout.connect(self._tick)
+        self._plots = []
+        for title, measured, setpoint in _SPECS:
+            p = TimePlot(title, measured, setpoint_key=setpoint)
+            self._plots.append(p)
+            layout.addWidget(p)
 
-    def set_device(self, dev):
-        self._sampler = Sampler(dev, maxlen=2000)
-        self._t0 = time.monotonic()
-        self._timer.start()
+    @property
+    def plots(self):
+        return self._plots
 
-    def _tick(self):
-        if self._sampler is None:
-            return
-        try:
-            self._sampler.sample(t=time.monotonic() - self._t0)
-        except Exception:  # noqa: BLE001 - a USB hiccup shouldn't kill the UI
-            return
-        ts = self._sampler.series("t")
-        for chan, curve in self._curves.items():
-            curve.setData(ts, self._sampler.series(chan))
+    def refresh(self, sampler) -> None:
+        for p in self._plots:
+            p.refresh(sampler)

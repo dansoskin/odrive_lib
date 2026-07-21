@@ -6,7 +6,8 @@ from collections import deque
 
 from core.device import Device
 
-CHANNELS = ("pos", "vel", "iq_setpoint", "iq_measured",
+CHANNELS = ("pos", "pos_setpoint", "vel", "vel_setpoint",
+            "iq_setpoint", "iq_measured", "torque_setpoint", "torque_estimate",
             "fet_temp", "motor_temp", "bus_voltage", "bus_current")
 
 

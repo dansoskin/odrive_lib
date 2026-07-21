@@ -14,11 +14,22 @@ python -m pip install -r requirements.txt
 cd tools/odrtune
 python __main__.py        # or, from the repo root: python tools/odrtune
 ```
-Click **Connect** (ODrive plugged in over USB), then use the tabs:
-- **Plots** — live pos/vel/Iq/temp/bus-voltage.
+Click **Connect** (ODrive plugged in over USB). A persistent **top panel**
+(visible on every tab) shows the requested-state and control-mode dropdowns, a
+live current-state readout, a global **Window (s)** control for the graph time
+span, and two small monitor graphs (bus voltage, FET temperature).
+
+Then use the tabs:
+- **Plots** — large graphs for position, velocity, current (Iq) and torque, each
+  overlaying the **setpoint and measured** traces.
 - **Calibration** — run the full motor+encoder calibration and see the result.
 - **Tuning** — live gain sliders (pos/vel/vel-integrator) + position step response.
 - **Config** — backup/restore config JSON and save to the ODrive's NVM.
+
+All live graphs (top panel + Plots tab) share one time axis and one sampling
+clock, so they stay aligned when you pan/zoom or change the window span. The
+step-response graph on the Tuning tab is a separate event-triggered capture and
+is not linked to the live time axis.
 
 ## Layout
 ```

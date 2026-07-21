@@ -25,10 +25,17 @@ Left-hand tabs:
 - **Control** — requested-state dropdown + live current-state readout; a control
   mode selector (Position/Velocity/Torque) that sets the ODrive mode and picks
   which setpoint is sent; a setpoint box (units follow the mode) with **Send**
-  and an optional **live send**; and **Arm** / **Idle** / **Stop** shortcuts.
+  and an optional **live send**; a **Set current position** field (redefines the
+  axis's absolute position — homing/zeroing); and **Arm** / **Idle** / **Stop**
+  shortcuts.
 - **Calibration** — run the full motor+encoder calibration and see the result.
 - **Tuning** — live gain sliders (pos/vel/vel-integrator) + position step response.
 - **Config** — backup/restore config JSON and save to the ODrive's NVM.
+
+Each graph has a header showing its latest value(s) and two toggles: **auto Y**
+(on by default — Y auto-scales to the data in the visible time window; turn off
+to zoom Y by hand) and **cursor** (a crosshair that follows the mouse and reads
+out time and value for measurement).
 
 All graphs in the right column share one time axis and one sampling clock, so
 they stay aligned when you pan/zoom or change the window span. The step-response

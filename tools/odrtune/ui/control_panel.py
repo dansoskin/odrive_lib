@@ -46,11 +46,21 @@ class ControlPanel(QWidget):
         sp_row.addWidget(self._setpoint, 1)
         sp_row.addWidget(self._send)
 
+        self._abspos = QDoubleSpinBox()
+        self._abspos.setRange(-100000.0, 100000.0)
+        self._abspos.setDecimals(3)
+        self._abspos.setSuffix(" turns")
+        self._set_abs = QPushButton("Set current position")
+        abs_row = QHBoxLayout()
+        abs_row.addWidget(self._abspos, 1)
+        abs_row.addWidget(self._set_abs)
+
         form.addRow("Requested state:", self._req)
         form.addRow("Current state:", self._cur)
         form.addRow("Control mode:", self._mode)
         form.addRow("Setpoint:", sp_row)
         form.addRow("", self._live)
+        form.addRow("Set current pos:", abs_row)
         root.addLayout(form)
 
         btns = QHBoxLayout()
@@ -67,6 +77,7 @@ class ControlPanel(QWidget):
         self._mode.activated.connect(self._on_mode)
         self._send.clicked.connect(self._send_setpoint)
         self._setpoint.valueChanged.connect(self._on_value_changed)
+        self._set_abs.clicked.connect(self._on_set_abs)
         self._arm.clicked.connect(self._on_arm)
         self._idle.clicked.connect(self._on_idle)
         self._stop.clicked.connect(self._on_stop)
@@ -112,6 +123,9 @@ class ControlPanel(QWidget):
         elif mode == device_mod.CONTROL_MODE_TORQUE:
             self._guard(lambda: self._dev.set_input_torque(value))
 
+    def _on_set_abs(self):
+        self._guard(lambda: self._dev.set_current_position(self._abspos.value()))
+
     def _on_arm(self):
         self._guard(lambda: self._dev.set_closed_loop(True))
         self._sync_combo(self._req, device_mod.CLOSED_LOOP_CONTROL)
@@ -136,7 +150,7 @@ class ControlPanel(QWidget):
 
     def _set_enabled(self, on: bool):
         for w in (self._req, self._mode, self._setpoint, self._send, self._live,
-                  self._arm, self._idle, self._stop):
+                  self._abspos, self._set_abs, self._arm, self._idle, self._stop):
             w.setEnabled(on)
 
     def _guard(self, fn):

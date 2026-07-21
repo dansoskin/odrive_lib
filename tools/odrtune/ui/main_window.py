@@ -63,9 +63,9 @@ class MainWindow(QMainWindow):
 
         # Share one time axis across every graph: link all to a master.
         self._live_plots = list(self._plots.plots)
-        self._master = self._live_plots[0].getPlotItem()
+        self._master = self._live_plots[0].plot_item
         for p in self._live_plots[1:]:
-            p.getPlotItem().setXLink(self._master)
+            p.plot_item.setXLink(self._master)
 
         self._timer = QTimer(self)
         self._timer.setInterval(interval_ms)

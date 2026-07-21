@@ -109,6 +109,11 @@ class Device:
     def set_input_torque(self, torque: float) -> None:
         self._axis.controller.input_torque = torque
 
+    def set_current_position(self, pos: float) -> None:
+        """Redefine the axis's current absolute position (homing / zeroing).
+        USB equivalent of the CAN Set_Absolute_Position command."""
+        self._axis.set_abs_pos(pos)
+
     # --- gains ---
     def get_gains(self) -> dict:
         c = self._axis.controller.config

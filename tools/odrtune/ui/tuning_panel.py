@@ -10,7 +10,7 @@ Parameters the connected firmware doesn't expose are shown disabled. Changes are
 live in RAM; use Config -> Save to NVM to persist."""
 from __future__ import annotations
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
                                QGroupBox, QLabel, QPushButton, QDoubleSpinBox,
                                QComboBox, QCheckBox, QScrollArea)
@@ -73,6 +73,115 @@ _GROUPS = [
     ]),
 ]
 
+# hover hints: what each parameter does and how it affects the loop
+_TIPS = {
+    "encoder_bandwidth":
+        "Bandwidth (Hz) of the position/velocity estimator feeding every loop. "
+        "Higher = less lag / snappier feedback but noisier, and it caps how high "
+        "the loop gains can go. Lower for coarse feedback (hall sensors ~10–100 Hz).",
+    "commutation_encoder_bandwidth":
+        "Estimator bandwidth (Hz) for the commutation encoder (motor commutation). "
+        "Higher = cleaner commutation at speed; lower if the signal is noisy.",
+    "current_control_bandwidth":
+        "Bandwidth (rad/s) of the inner current/torque PI loop. Actual Iq gains are "
+        "derived from this plus phase R/L. Higher = faster torque response but more "
+        "noise; limited by the control sample rate. ~1000 is typical.",
+    "current_soft_max":
+        "Continuous current limit (A) — your torque ceiling in normal operation. "
+        "Raise toward the motor's safe continuous current for more torque.",
+    "current_hard_max":
+        "Absolute over-current cutoff (A, hardware protection). Keep above the soft "
+        "max and within the motor/board rating.",
+    "current_slew_rate_limit":
+        "Max rate of change of the current command (A/s). Raise for snappier torque "
+        "steps; lower to soften current transients.",
+    "wL_FF_enable":
+        "Cross-coupling (ωL) feedforward: compensates d/q coupling that grows with "
+        "speed → much better current tracking at high RPM. Needs valid L_d / L_q.",
+    "bEMF_FF_enable":
+        "Back-EMF feedforward: cancels the motor's back-EMF so the current loop stays "
+        "accurate at high speed. Needs a valid PM flux linkage.",
+    "dI_dt_FF_enable":
+        "di/dt feedforward: anticipates the voltage needed for fast current changes → "
+        "better transient current tracking.",
+    "vel_gain":
+        "Velocity-loop proportional gain (Nm per turn/s): velocity error → torque. The "
+        "main stiffness knob for speed. Raise until you hear whine / see vibration, "
+        "then back off ~2×.",
+    "vel_integrator_gain":
+        "Velocity-loop integral gain (Nm per turn): removes steady-state velocity error "
+        "and holds against load. Too high → low-frequency hunting/overshoot. Rule of "
+        "thumb ≈ 0.5 × bandwidth(Hz) × vel_gain.",
+    "vel_integrator_limit":
+        "Anti-windup clamp on the velocity integrator's output. Bounds windup during "
+        "saturation; often tied to the current limit.",
+    "vel_integrator_decay_gain":
+        "Leaky-integrator decay: bleeds the integrator toward zero when error is small, "
+        "reducing post-move overshoot while still allowing a high integrator gain. "
+        "0 disables.",
+    "vel_limit":
+        "Maximum commanded speed (turns/s). Also clamps the velocity the position loop "
+        "may request. Set to your true max operating speed.",
+    "pos_gain":
+        "Position-loop proportional gain (1/s): position error → velocity setpoint "
+        "(position loop is P-only). Tune after the velocity loop; raise until "
+        "overshoot/ringing, then back off.",
+    "inertia":
+        "Acceleration feedforward: torque_ff = inertia × commanded accel. Set to the "
+        "reflected system inertia to improve tracking during fast accelerations. "
+        "0 disables.",
+    "enable_gain_scheduling":
+        "Automatically reduces pos/vel gains as the position error shrinks near the "
+        "target — lets you run higher gains for aggressive moves without buzzing at "
+        "standstill.",
+    "gain_scheduling_width":
+        "Position-error window (turns) over which the gains ramp down to the minimum "
+        "ratio. Wider = gentler reduction over a larger range.",
+    "gain_scheduling_min_ratio":
+        "Minimum fraction (0–1) the gains scale to at zero error. Lower = quieter at "
+        "rest but softer holding stiffness.",
+    "torque_constant":
+        "Motor torque constant (Nm/A ≈ 8.27 / KV). Scales current↔torque and the torque "
+        "estimate. Must be correct or torque-mode commands and feedforwards are wrong.",
+    "phase_resistance":
+        "Measured motor phase resistance (Ω); the current-loop gains derive from it. "
+        "Normally set by calibration — don't guess.",
+    "phase_inductance":
+        "Measured motor phase inductance (H); sets current-loop gains with resistance. "
+        "Normally from calibration.",
+    "ff_pm_flux_linkage":
+        "Permanent-magnet flux linkage (Wb) used by the back-EMF feedforward. Must be "
+        "valid for bEMF FF to work.",
+    "motor_model_l_d":
+        "d-axis inductance (H) for the cross-coupling feedforward (accounts for "
+        "saliency). From calibration/identification.",
+    "motor_model_l_q":
+        "q-axis inductance (H) for the cross-coupling feedforward. From "
+        "calibration/identification.",
+}
+
+_GUIDE_HTML = (
+    "<b>Tuning guide</b>"
+    "<p><i>ODrive guidelines:</i></p>"
+    "<ul>"
+    "<li>Calibrate motor &amp; encoder first — a valid motor model (R, L, flux) is required.</li>"
+    "<li>Tune inner → outer: encoder bandwidth → current → velocity → position.</li>"
+    "<li><b>Velocity:</b> raise <tt>vel_gain</tt> until the motor whines/vibrates, then cut ~2×. "
+    "Start <tt>vel_integrator_gain</tt> ≈ 0.5 × bandwidth(Hz) × <tt>vel_gain</tt> (or simply = vel_gain).</li>"
+    "<li><b>Position:</b> raise <tt>pos_gain</tt> until you see overshoot/oscillation, then back off.</li>"
+    "<li>For low-resolution feedback (hall sensors) keep <tt>encoder_bandwidth</tt> low (~10–100 Hz).</li>"
+    "</ul>"
+    "<p><i>Tips:</i></p>"
+    "<ul>"
+    "<li>Use the <b>Back-and-forth sequence</b> below + the graph <b>Pause</b> to capture and inspect a step.</li>"
+    "<li>Watch <b>actual</b> vs <b>ideal</b> on the graphs: <i>ideal</i> is what the controller commands each "
+    "instant; <i>actual</i> should track it with minimal lag/overshoot. Lagging → raise gains; ringing → lower.</li>"
+    "<li>For high-speed / high-dynamics rigs, push <tt>current_control_bandwidth</tt> up and enable the FF terms.</li>"
+    "<li>Buzzing at standstill? Lower <tt>encoder_bandwidth</tt> or enable gain scheduling before dropping gains.</li>"
+    "<li>Changes are live in RAM — <b>Config → Save to NVM</b> once you're happy.</li>"
+    "</ul>"
+)
+
 _SEQ_CHANNELS = [("Position", "pos"), ("Velocity", "vel")]
 _SEQ_MODE = {
     "pos": device_mod.CONTROL_MODE_POSITION,
@@ -95,6 +204,19 @@ class TuningPanel(QWidget):
         scroll.setWidget(container)
         outer.addWidget(scroll)
 
+        # --- tuning guide (collapsible) ---
+        guide = QGroupBox("Tuning guide")
+        guide.setCheckable(True)
+        guide.setChecked(False)          # collapsed by default to save space
+        gl = QVBoxLayout(guide)
+        self._guide_body = QLabel(_GUIDE_HTML)
+        self._guide_body.setWordWrap(True)
+        self._guide_body.setTextFormat(Qt.RichText)
+        self._guide_body.setVisible(False)
+        gl.addWidget(self._guide_body)
+        guide.toggled.connect(self._guide_body.setVisible)
+        root.addWidget(guide)
+
         # parameter registry: key -> ("f"|"b", widget)
         self._widgets = {}
         for title, params in _GROUPS:
@@ -111,12 +233,16 @@ class TuningPanel(QWidget):
                     w.setRange(0.0, maxv)
                     w.setDecimals(decimals)
                     w.setSuffix(suffix)
+                    w.setToolTip(_TIPS.get(key, ""))
                     w.valueChanged.connect(lambda v, k=key: self._apply(k, v))
-                    form.addRow(label + ":", w)
+                    lbl = QLabel(label + ":")
+                    lbl.setToolTip(_TIPS.get(key, ""))
+                    form.addRow(lbl, w)
                     self._widgets[key] = (_F, w)
                 else:
                     _, key, label = spec
                     w = QCheckBox(label)
+                    w.setToolTip(_TIPS.get(key, ""))
                     w.toggled.connect(lambda v, k=key: self._apply(k, bool(v)))
                     form.addRow("", w)
                     self._widgets[key] = (_B, w)

@@ -29,8 +29,10 @@ trajectory). Current shows actual + command (`Iq_setpoint`).
 Left-hand tabs:
 - **Control** — requested-state dropdown + live current-state readout; a control
   mode selector (Position/Velocity/Torque) that sets the ODrive mode and picks
-  which setpoint is sent; a setpoint box (units follow the mode) with **Send**
-  and an optional **live send**; a **Set current position** field (redefines the
+  which setpoint is sent; a **Units per rev** conversion (enter position/velocity
+  setpoints in your own units — the GUI divides by this to send revolutions;
+  torque stays raw; persisted to `~/.odrtune/config.json`); a setpoint box with
+  **Send** and an optional **live send**; a **Set current position** field (redefines the
   axis's absolute position — homing/zeroing); **Arm** / **Idle** / **Stop**
   shortcuts; and a **Motion shaping** group — an input-mode selector
   (Passthrough / Velocity ramp / Position filter / Trajectory / Torque ramp)
@@ -48,7 +50,9 @@ Left-hand tabs:
   **back-and-forth sequence** (drive the motor between points A and B at a set
   dwell) so you can watch the repeated step on the right-hand graphs while you
   adjust gains. Tune inner-to-outer: feedback → current (+FF) → velocity →
-  position. Parameters your firmware doesn't expose are shown disabled.
+  position. Parameters your firmware doesn't expose are shown disabled. **Hover
+  any field** for a hint on what it does and how it affects the loop, and expand
+  the collapsible **Tuning guide** at the top for ODrive's guidelines plus tips.
 - **Config** — backup/restore config JSON and save to the ODrive's NVM.
 
 Each graph has a header showing its latest value(s) and three controls: **auto Y**

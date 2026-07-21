@@ -12,11 +12,20 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
                                QCheckBox, QGroupBox)
 
 from core import device as device_mod
+from core import settings
 
-# (label, control_mode value, unit) for the setpoint modes we can command
+_CONV_TIP = ("Units per motor revolution. Enter position/velocity setpoints "
+             "(and 'set current position') in your own units; the GUI divides "
+             "by this to send revolutions to the ODrive. Torque is not "
+             "converted. e.g. 360 to command degrees, or your gear/leadscrew "
+             "ratio. Saved to ~/.odrtune/config.json.")
+
+# (label, control_mode value, unit) for the setpoint modes we can command.
+# Position/velocity are shown as generic "units" because the conversion factor
+# maps them to motor revolutions; torque is always raw Nm.
 _MODES = [
-    ("Position", device_mod.CONTROL_MODE_POSITION, "turns"),
-    ("Velocity", device_mod.CONTROL_MODE_VELOCITY, "turns/s"),
+    ("Position", device_mod.CONTROL_MODE_POSITION, "units"),
+    ("Velocity", device_mod.CONTROL_MODE_VELOCITY, "units/s"),
     ("Torque", device_mod.CONTROL_MODE_TORQUE, "Nm"),
 ]
 
@@ -63,10 +72,15 @@ class ControlPanel(QWidget):
         self._mode = QComboBox()
         for label, value, _unit in _MODES:
             self._mode.addItem(label, value)
+        self._conv = QDoubleSpinBox()
+        self._conv.setRange(1e-6, 1e9)
+        self._conv.setDecimals(6)
+        self._conv.setValue(settings.load().get("conversion", 1.0))
+        self._conv.setToolTip(_CONV_TIP)
         self._setpoint = QDoubleSpinBox()
-        self._setpoint.setRange(-100000.0, 100000.0)
+        self._setpoint.setRange(-1e9, 1e9)
         self._setpoint.setDecimals(3)
-        self._setpoint.setSuffix(" turns")
+        self._setpoint.setSuffix(" units")
         self._send = QPushButton("Send")
         self._live = QCheckBox("live send")
 
@@ -75,9 +89,9 @@ class ControlPanel(QWidget):
         sp_row.addWidget(self._send)
 
         self._abspos = QDoubleSpinBox()
-        self._abspos.setRange(-100000.0, 100000.0)
+        self._abspos.setRange(-1e9, 1e9)
         self._abspos.setDecimals(3)
-        self._abspos.setSuffix(" turns")
+        self._abspos.setSuffix(" units")
         self._set_abs = QPushButton("Set current position")
         abs_row = QHBoxLayout()
         abs_row.addWidget(self._abspos, 1)
@@ -86,6 +100,7 @@ class ControlPanel(QWidget):
         form.addRow("Requested state:", self._req)
         form.addRow("Current state:", self._cur)
         form.addRow("Control mode:", self._mode)
+        form.addRow("Units per rev:", self._conv)
         form.addRow("Setpoint:", sp_row)
         form.addRow("", self._live)
         form.addRow("Set current pos:", abs_row)
@@ -128,6 +143,7 @@ class ControlPanel(QWidget):
         self._arm.clicked.connect(self._on_arm)
         self._idle.clicked.connect(self._on_idle)
         self._stop.clicked.connect(self._on_stop)
+        self._conv.valueChanged.connect(self._on_conv_changed)
 
     # --- device lifecycle ---
     def set_device(self, dev):
@@ -182,15 +198,26 @@ class ControlPanel(QWidget):
             return
         mode = self._mode.currentData()
         value = self._setpoint.value()
+        rev = value / self._factor()   # user units -> revolutions
         if mode == device_mod.CONTROL_MODE_POSITION:
-            self._guard(lambda: self._dev.set_input_pos(value))
+            self._guard(lambda: self._dev.set_input_pos(rev))
         elif mode == device_mod.CONTROL_MODE_VELOCITY:
-            self._guard(lambda: self._dev.set_input_vel(value))
+            self._guard(lambda: self._dev.set_input_vel(rev))
         elif mode == device_mod.CONTROL_MODE_TORQUE:
-            self._guard(lambda: self._dev.set_input_torque(value))
+            self._guard(lambda: self._dev.set_input_torque(value))  # Nm, raw
 
     def _on_set_abs(self):
-        self._guard(lambda: self._dev.set_current_position(self._abspos.value()))
+        rev = self._abspos.value() / self._factor()
+        self._guard(lambda: self._dev.set_current_position(rev))
+
+    def _factor(self) -> float:
+        c = self._conv.value()
+        return c if c else 1.0
+
+    def _on_conv_changed(self, value):
+        cfg = settings.load()
+        cfg["conversion"] = value
+        settings.save(cfg)
 
     def _on_arm(self):
         self._guard(lambda: self._dev.set_closed_loop(True))

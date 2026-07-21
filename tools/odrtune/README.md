@@ -20,8 +20,11 @@ the window is split: feature tabs on the **left**, a persistent **plots column
 on the right** that stays visible on every tab. The plots column holds the
 global **Window (s)** control, a **Pause** toggle (freezes sampling so you can
 inspect — pan/zoom/cursor still work), and the four large graphs — position,
-velocity, current (Iq), torque — each overlaying the **setpoint and measured**
-traces.
+velocity, current (Iq), torque. Each overlays up to three traces: **actual**
+(measured), **target** (the raw command you gave, e.g. `input_pos`), and
+**ideal** (the controller's effective setpoint right now, e.g.
+`controller.pos_setpoint` — where the motor *should* be after ramps/filtering/
+trajectory). Current shows actual + command (`Iq_setpoint`).
 
 Left-hand tabs:
 - **Control** — requested-state dropdown + live current-state readout; a control
@@ -42,9 +45,10 @@ Left-hand tabs:
   vel limit), **position loop** (gain, inertia accel-FF), **gain scheduling**
   (enable + width + min ratio), and **motor model** (torque constant, phase R/L,
   PM flux linkage, model L_d/L_q — normally from calibration). Plus a
-  position/velocity step-response test. Tune inner-to-outer: feedback → current
-  (+FF) → velocity → position. Parameters your firmware doesn't expose are shown
-  disabled.
+  **back-and-forth sequence** (drive the motor between points A and B at a set
+  dwell) so you can watch the repeated step on the right-hand graphs while you
+  adjust gains. Tune inner-to-outer: feedback → current (+FF) → velocity →
+  position. Parameters your firmware doesn't expose are shown disabled.
 - **Config** — backup/restore config JSON and save to the ODrive's NVM.
 
 Each graph has a header showing its latest value(s) and three controls: **auto Y**
@@ -61,9 +65,7 @@ Tuning changes are applied **live in RAM**; use **Config → Save to NVM** to ke
 them across power cycles.
 
 All graphs in the right column share one time axis and one sampling clock, so
-they stay aligned when you pan/zoom or change the window span. The step-response
-graph on the Tuning tab is a separate event-triggered capture and is not linked
-to the live time axis.
+they stay aligned when you pan/zoom or change the window span.
 
 ## Layout
 ```

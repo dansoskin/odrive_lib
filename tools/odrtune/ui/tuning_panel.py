@@ -3,25 +3,21 @@
 Grouped inner-to-outer (the order you normally tune in): feedback (encoder
 bandwidths) -> current loop + its feedforwards -> velocity loop -> position loop
 -> gain scheduling -> motor model. Each field writes to the ODrive as you change
-it. A step-response test at the bottom commands a position or velocity step and
-plots the response.
+it. At the bottom, a back-and-forth sequence drives the motor between two points
+so you can watch the repeated response on the (always-visible) right-hand graphs.
 
 Parameters the connected firmware doesn't expose are shown disabled. Changes are
 live in RAM; use Config -> Save to NVM to persist."""
 from __future__ import annotations
 
-import time
-
-import pyqtgraph as pg
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
                                QGroupBox, QLabel, QPushButton, QDoubleSpinBox,
                                QComboBox, QCheckBox, QScrollArea)
 
 from core import device as device_mod
-from core.step_response import StepResponse
 
-# float param: (key, label, suffix, decimals, max)   bool param: (key, label)
+# float param: (kind, key, label, suffix, decimals, max)  bool: (kind, key, label)
 _F = "f"
 _B = "b"
 
@@ -77,19 +73,18 @@ _GROUPS = [
     ]),
 ]
 
-_STEP_CHANNELS = [("Position", "pos"), ("Velocity", "vel")]
-_STEP_MODE = {
+_SEQ_CHANNELS = [("Position", "pos"), ("Velocity", "vel")]
+_SEQ_MODE = {
     "pos": device_mod.CONTROL_MODE_POSITION,
     "vel": device_mod.CONTROL_MODE_VELOCITY,
 }
 
 
 class TuningPanel(QWidget):
-    def __init__(self, parent=None, interval_ms: int = 20):
+    def __init__(self, parent=None):
         super().__init__(parent)
         self._dev = None
-        self._step = None
-        self._t0 = 0.0
+        self._seq_i = 0
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -100,7 +95,7 @@ class TuningPanel(QWidget):
         scroll.setWidget(container)
         outer.addWidget(scroll)
 
-        # widget registry: key -> ("f"|"b", widget)
+        # parameter registry: key -> ("f"|"b", widget)
         self._widgets = {}
         for title, params in _GROUPS:
             group = QGroupBox(title)
@@ -127,43 +122,43 @@ class TuningPanel(QWidget):
                     self._widgets[key] = (_B, w)
             root.addWidget(group)
 
-        # --- step-response test ---
-        step_group = QGroupBox("Step-response test")
-        sv = QVBoxLayout(step_group)
-        bar = QHBoxLayout()
-        self._chan = QComboBox()
-        for label, ch in _STEP_CHANNELS:
-            self._chan.addItem(label, ch)
-        self._target = QDoubleSpinBox()
-        self._target.setRange(-100000.0, 100000.0)
-        self._target.setValue(1.0)
-        self._btn = QPushButton("Run step")
-        bar.addWidget(QLabel("Channel:"))
-        bar.addWidget(self._chan)
-        bar.addWidget(QLabel("Target:"))
-        bar.addWidget(self._target)
-        bar.addWidget(self._btn)
-        sv.addLayout(bar)
-        self._plot = pg.PlotWidget(title="Step response")
-        self._plot.showGrid(x=True, y=True, alpha=0.3)
-        self._plot.setMinimumHeight(180)
-        self._curve = self._plot.plot(pen=pg.mkPen("#4fc3f7", width=2))
-        self._target_line = self._plot.plot(
-            pen=pg.mkPen("#ff8a65", style=Qt.PenStyle.DashLine))
-        sv.addWidget(self._plot, 1)
-        root.addWidget(step_group)
+        # --- back-and-forth sequence ---
+        seq_group = QGroupBox("Back-and-forth sequence")
+        sform = QFormLayout(seq_group)
+        self._seq_chan = QComboBox()
+        for label, ch in _SEQ_CHANNELS:
+            self._seq_chan.addItem(label, ch)
+        self._seq_a = QDoubleSpinBox()
+        self._seq_a.setRange(-100000.0, 100000.0)
+        self._seq_a.setValue(0.0)
+        self._seq_b = QDoubleSpinBox()
+        self._seq_b.setRange(-100000.0, 100000.0)
+        self._seq_b.setValue(1.0)
+        self._seq_dwell = QDoubleSpinBox()
+        self._seq_dwell.setRange(0.05, 3600.0)
+        self._seq_dwell.setDecimals(2)
+        self._seq_dwell.setValue(1.0)
+        self._seq_dwell.setSuffix(" s")
+        self._seq_btn = QPushButton("Start")
+        self._seq_btn.setCheckable(True)
+        sform.addRow("Channel:", self._seq_chan)
+        sform.addRow("Point A:", self._seq_a)
+        sform.addRow("Point B:", self._seq_b)
+        sform.addRow("Dwell:", self._seq_dwell)
+        sform.addRow("", self._seq_btn)
+        root.addWidget(seq_group)
 
-        note = QLabel("Changes apply live (in RAM). Use Config -> Save to NVM "
-                      "to keep them across power cycles.")
+        note = QLabel("Sequence drives the motor between A and B (watch the "
+                      "graphs on the right). Changes apply live in RAM; use "
+                      "Config -> Save to NVM to keep them.")
         note.setWordWrap(True)
         note.setStyleSheet("color: gray;")
         root.addWidget(note)
         root.addStretch(1)
 
-        self._btn.clicked.connect(self._start_step)
-        self._timer = QTimer(self)
-        self._timer.setInterval(interval_ms)
-        self._timer.timeout.connect(self._record)
+        self._seq_btn.toggled.connect(self._toggle_seq)
+        self._seq_timer = QTimer(self)
+        self._seq_timer.timeout.connect(self._seq_tick)
         self._set_enabled(False)
 
     # --- device lifecycle ---
@@ -181,14 +176,16 @@ class TuningPanel(QWidget):
             else:
                 w.setValue(values[key])
             w.blockSignals(False)
-        for w in (self._chan, self._target, self._btn):
+        for w in (self._seq_chan, self._seq_a, self._seq_b, self._seq_dwell,
+                  self._seq_btn):
             w.setEnabled(True)
 
     # --- helpers ---
     def _set_enabled(self, on: bool):
         for _kind, w in self._widgets.values():
             w.setEnabled(on)
-        for w in (self._chan, self._target, self._btn):
+        for w in (self._seq_chan, self._seq_a, self._seq_b, self._seq_dwell,
+                  self._seq_btn):
             w.setEnabled(on)
 
     def _apply(self, key, value):
@@ -199,30 +196,39 @@ class TuningPanel(QWidget):
         except Exception:  # noqa: BLE001 - USB hiccup shouldn't crash the UI
             pass
 
-    def _start_step(self):
+    # --- back-and-forth sequence ---
+    def _toggle_seq(self, on: bool):
+        if self._dev is None:
+            self._seq_btn.setChecked(False)
+            return
+        if on:
+            ch = self._seq_chan.currentData()
+            try:
+                self._dev.set_control_mode(_SEQ_MODE[ch])
+                self._dev.set_closed_loop(True)
+            except Exception:  # noqa: BLE001
+                pass
+            self._seq_i = 0
+            self._send_seq()  # go to A immediately
+            self._seq_timer.start(max(50, int(self._seq_dwell.value() * 1000)))
+            self._seq_btn.setText("Stop")
+        else:
+            self._seq_timer.stop()
+            self._seq_btn.setText("Start")
+
+    def _seq_tick(self):
+        self._seq_i ^= 1
+        self._send_seq()
+
+    def _send_seq(self):
         if self._dev is None:
             return
-        ch = self._chan.currentData()
+        ch = self._seq_chan.currentData()
+        value = self._seq_b.value() if self._seq_i else self._seq_a.value()
         try:
-            self._dev.set_control_mode(_STEP_MODE[ch])
-            self._dev.set_closed_loop(True)
+            if ch == "pos":
+                self._dev.set_input_pos(value)
+            else:
+                self._dev.set_input_vel(value)
         except Exception:  # noqa: BLE001
             pass
-        self._step = StepResponse(self._dev, channel=ch)
-        self._step.begin(target=self._target.value())
-        self._t0 = time.monotonic()
-        self._timer.start()
-        QTimer.singleShot(1500, self._timer.stop)  # record ~1.5 s
-
-    def _record(self):
-        if self._step is None:
-            return
-        try:
-            self._step.record(t=time.monotonic() - self._t0)
-        except Exception:  # noqa: BLE001
-            return
-        t, y = self._step.data()
-        self._curve.setData(t, y)
-        if t:
-            self._target_line.setData([t[0], t[-1]],
-                                      [self._step.target, self._step.target])

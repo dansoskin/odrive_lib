@@ -1,16 +1,16 @@
-"""Reusable live time-series plot.
+"""Reusable live time-series plot with one or more named traces.
 
-A header row (title, latest-value readout, 'auto Y' and 'cursor' checkboxes)
-sits above a pyqtgraph plot that shows one measured trace plus an optional
-setpoint trace on the same axes, driven from a shared Sampler.
+Typical use for a control channel is three traces on the same axes:
+- **actual**  — the measured value (blue, solid)
+- **target**  — the raw command you gave, e.g. input_pos (orange, dashed)
+- **ideal**   — the controller's effective setpoint right now, e.g.
+  controller.pos_setpoint (green, dotted) — where the motor *should* be at this
+  instant after ramps / filtering / trajectory shaping.
 
-- auto Y (on by default): Y auto-ranges to the data currently visible in the
-  time window; uncheck to freeze/zoom Y manually.
-- cursor: a crosshair that follows the mouse and reads out (time, value).
-
-The X axis is shared across plots by X-linking their plot items (done by
-MainWindow), so all plots pan/zoom together on time. Expose the underlying
-pyqtgraph PlotItem via `plot_item` for that linking."""
+Header: title, latest value(s), 'auto Y' and 'cursor' toggles, and a -/+
+minimize button. Driven from a shared Sampler via refresh(sampler). Expose the
+pyqtgraph PlotItem via `plot_item` so MainWindow can X-link all plots to one
+shared time axis."""
 from __future__ import annotations
 
 import pyqtgraph as pg
@@ -18,23 +18,27 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QCheckBox, QToolButton)
 
-_MEASURED_PEN = pg.mkPen("#4fc3f7", width=2)                       # blue
-_SETPOINT_PEN = pg.mkPen("#ff8a65", width=1, style=Qt.PenStyle.DashLine)  # orange dashed
+# pens by trace position: actual / target / ideal / (extra)
+_PENS = [
+    pg.mkPen("#4fc3f7", width=2),                                  # blue solid
+    pg.mkPen("#ff8a65", width=1, style=Qt.PenStyle.DashLine),      # orange dashed
+    pg.mkPen("#81c784", width=1, style=Qt.PenStyle.DotLine),       # green dotted
+    pg.mkPen("#ba68c8", width=1, style=Qt.PenStyle.DashDotLine),   # purple
+]
 _CURSOR_PEN = pg.mkPen("#9e9e9e", width=1, style=Qt.PenStyle.DashLine)
 
 
 class TimePlot(QWidget):
-    def __init__(self, title, measured_key, setpoint_key=None,
-                 compact=False, parent=None):
+    def __init__(self, title, traces, compact=False, parent=None):
+        """traces: list of (sampler_key, label). First is the primary/actual."""
         super().__init__(parent)
-        self._measured_key = measured_key
-        self._setpoint_key = setpoint_key
+        self._traces = list(traces)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(1)
 
-        # --- header (kept as a widget so we can measure it when collapsed) ---
+        # --- header ---
         self._header = QWidget()
         header = QHBoxLayout(self._header)
         header.setContentsMargins(2, 0, 2, 0)
@@ -62,21 +66,15 @@ class TimePlot(QWidget):
         self._pw.setLabel("bottom", "time", units="s")
         root.addWidget(self._pw, 1)
 
-        if compact:
-            self._exp_min, self._exp_max = 0, 150
-        else:
-            self._exp_min, self._exp_max = 170, 16777215
-        self.setMinimumHeight(self._exp_min)
-        self.setMaximumHeight(self._exp_max)
-        self._collapse.toggled.connect(self._on_collapse)
-
         pi = self._pw.getPlotItem()
-        if setpoint_key is not None:
+        multi = len(self._traces) > 1
+        if multi:
             pi.addLegend(offset=(-10, 10))
-        self._measured = self._pw.plot(pen=_MEASURED_PEN, name="measured")
-        self._setpoint = None
-        if setpoint_key is not None:
-            self._setpoint = self._pw.plot(pen=_SETPOINT_PEN, name="setpoint")
+        self._curves = []
+        for i, (key, label) in enumerate(self._traces):
+            pen = _PENS[i % len(_PENS)]
+            curve = self._pw.plot(pen=pen, name=(label if multi else None))
+            self._curves.append((key, label, curve))
 
         # --- crosshair cursor (hidden until enabled) ---
         self._vline = pg.InfiniteLine(angle=90, movable=False, pen=_CURSOR_PEN)
@@ -88,8 +86,16 @@ class TimePlot(QWidget):
         self._proxy = pg.SignalProxy(pi.scene().sigMouseMoved,
                                      rateLimit=60, slot=self._on_mouse)
 
+        if compact:
+            self._exp_min, self._exp_max = 0, 150
+        else:
+            self._exp_min, self._exp_max = 170, 16777215
+        self.setMinimumHeight(self._exp_min)
+        self.setMaximumHeight(self._exp_max)
+
         self._auto.toggled.connect(self._on_auto)
         self._cursor.toggled.connect(self._on_cursor)
+        self._collapse.toggled.connect(self._on_collapse)
         self._on_auto(True)
 
     @property
@@ -98,28 +104,22 @@ class TimePlot(QWidget):
 
     def refresh(self, sampler) -> None:
         t = sampler.series("t")
-        meas = sampler.series(self._measured_key)
-        self._measured.setData(t, meas)
-        last_m = meas[-1] if meas else None
-        if self._setpoint is not None:
-            setp = sampler.series(self._setpoint_key)
-            self._setpoint.setData(t, setp)
-            last_s = setp[-1] if setp else None
-            self._latest.setText(
-                "" if last_m is None
-                else f"meas {last_m:.4g}  |  set {last_s:.4g}")
-        else:
-            self._latest.setText("" if last_m is None else f"{last_m:.4g}")
+        parts = []
+        multi = len(self._curves) > 1
+        for key, label, curve in self._curves:
+            data = sampler.series(key)
+            curve.setData(t, data)
+            if data:
+                parts.append(f"{label} {data[-1]:.4g}" if multi
+                             else f"{data[-1]:.4g}")
+        self._latest.setText("   ".join(parts))
 
     # --- header actions ---
     def _on_collapse(self, on: bool):
-        """Minimize: hide the plot, shrink to just the header (latest value
-        stays visible)."""
         self._pw.setVisible(not on)
         if on:
-            h = self._header.sizeHint().height()
             self.setMinimumHeight(0)
-            self.setMaximumHeight(h)
+            self.setMaximumHeight(self._header.sizeHint().height())
             self._collapse.setText("+")
         else:
             self.setMinimumHeight(self._exp_min)
@@ -129,7 +129,7 @@ class TimePlot(QWidget):
     def _on_auto(self, on: bool):
         vb = self._pw.getPlotItem().getViewBox()
         if on:
-            vb.setAutoVisible(y=True)   # scale Y to data in the visible X window
+            vb.setAutoVisible(y=True)
             vb.enableAutoRange(y=True)
         else:
             vb.enableAutoRange(y=False)

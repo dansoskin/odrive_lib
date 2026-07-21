@@ -31,6 +31,15 @@ CONTROL_MODES = {
 }
 
 
+def _get(obj, attr):
+    """Read an attribute, returning NaN if this firmware doesn't expose it
+    (so an absent effective-setpoint just shows a gap instead of crashing)."""
+    try:
+        return getattr(obj, attr)
+    except Exception:  # noqa: BLE001
+        return float("nan")
+
+
 def connect(timeout: float = 15.0):
     """Find and return the first ODrive over USB. Raises on timeout."""
     import odrive
@@ -59,17 +68,22 @@ class Device:
     # --- feedback snapshot ---
     def feedback(self) -> dict:
         a = self._axis
+        ct = a.controller
+        # For each channel: measured (actual), target (raw command you gave),
+        # and ref (the controller's effective setpoint = where the motor should
+        # be right now, after ramp/filter/trajectory). pos uses pos_abs (the
+        # absolute frame the controller and set_abs_pos operate in).
         return {
-            # pos_abs is the absolute frame the controller tracks and that
-            # input_pos / set_abs_pos operate in (so "set current position" is
-            # reflected here); pos_rel is only relative-to-boot.
             "pos": a.pos_vel_mapper.pos_abs,
-            "pos_setpoint": a.controller.input_pos,
+            "pos_target": ct.input_pos,
+            "pos_ref": _get(ct, "pos_setpoint"),
             "vel": a.pos_vel_mapper.vel,
-            "vel_setpoint": a.controller.input_vel,
+            "vel_target": ct.input_vel,
+            "vel_ref": _get(ct, "vel_setpoint"),
             "iq_setpoint": a.motor.foc.Iq_setpoint,
             "iq_measured": a.motor.foc.Iq_measured,
-            "torque_setpoint": a.controller.torque_setpoint,
+            "torque_target": ct.input_torque,
+            "torque_ref": _get(ct, "torque_setpoint"),
             "torque_estimate": a.motor.torque_estimate,
             "fet_temp": a.motor.fet_thermistor.temperature,
             "motor_temp": a.motor.motor_thermistor.temperature,

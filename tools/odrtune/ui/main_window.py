@@ -43,8 +43,8 @@ class MainWindow(QMainWindow):
         self._connect = ConnectPanel()
         self._connect.connected.connect(self._set_device)
         top.addWidget(self._connect, 0)
-        self._bus = TimePlot("Bus voltage (V)", "bus_voltage", compact=True)
-        self._fet = TimePlot("FET temp (°C)", "fet_temp", compact=True)
+        self._bus = TimePlot("Bus voltage (V)", [("bus_voltage", "")], compact=True)
+        self._fet = TimePlot("FET temp (°C)", [("fet_temp", "")], compact=True)
         for p in (self._bus, self._fet):
             p.setMinimumWidth(220)
             top.addWidget(p, 1)

@@ -14,12 +14,15 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
 
 from ui.time_plot import TimePlot
 
-# large graphs: (title, measured_key, setpoint_key)
+# large graphs: (title, [(sampler_key, label), ...])  actual / target / ideal
 _MAIN = [
-    ("Position (turns)", "pos", "pos_setpoint"),
-    ("Velocity (turns/s)", "vel", "vel_setpoint"),
-    ("Current Iq (A)", "iq_measured", "iq_setpoint"),
-    ("Torque (Nm)", "torque_estimate", "torque_setpoint"),
+    ("Position (turns)", [("pos", "actual"), ("pos_target", "target"),
+                          ("pos_ref", "ideal")]),
+    ("Velocity (turns/s)", [("vel", "actual"), ("vel_target", "target"),
+                            ("vel_ref", "ideal")]),
+    ("Current Iq (A)", [("iq_measured", "actual"), ("iq_setpoint", "command")]),
+    ("Torque (Nm)", [("torque_estimate", "actual"), ("torque_target", "target"),
+                     ("torque_ref", "ideal")]),
 ]
 
 
@@ -53,8 +56,8 @@ class PlotsColumn(QWidget):
         col.setContentsMargins(0, 0, 0, 0)
 
         self._plots = []
-        for title, measured, setpoint in _MAIN:
-            self._plots.append(TimePlot(title, measured, setpoint_key=setpoint))
+        for title, traces in _MAIN:
+            self._plots.append(TimePlot(title, traces))
         for p in self._plots:
             col.addWidget(p)
 

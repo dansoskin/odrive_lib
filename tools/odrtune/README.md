@@ -15,7 +15,9 @@ cd tools/odrtune
 python __main__.py        # or, from the repo root: python tools/odrtune
 ```
 Click **Connect** (ODrive plugged in over USB). The **top bar** holds the connect
-controls plus two small monitor graphs (bus voltage, FET temperature). Below,
+controls, a live **driver state + error** readout, an **E-STOP** button (disarms
+the motor — requests IDLE), and two small monitor graphs (bus voltage, FET
+temperature). Below,
 the window is split: feature tabs on the **left**, a persistent **plots column
 on the right** that stays visible on every tab. The plots column holds the
 global **Window (s)** control, a **Pause** toggle (freezes sampling so you can
@@ -27,11 +29,12 @@ velocity, current (Iq), torque. Each overlays up to three traces: **actual**
 trajectory). Current shows actual + command (`Iq_setpoint`).
 
 Left-hand tabs:
-- **Control** — requested-state dropdown + live current-state readout; a control
-  mode selector (Position/Velocity/Torque) that sets the ODrive mode and picks
-  which setpoint is sent; a **Units per rev** conversion (enter position/velocity
-  setpoints in your own units — the GUI divides by this to send revolutions;
-  torque stays raw; persisted to `~/.odrtune/config.json`); a setpoint box with
+- **Control** — requested-state dropdown; a control mode selector
+  (Position/Velocity/Torque) that sets the ODrive mode and picks which setpoint
+  is sent; a **Conversion** (gear/units) factor — position/velocity setpoints are
+  multiplied by it before sending (`driver_revs = your_value × conversion`, e.g. a
+  1:3 gear → enter 3; `1` = no conversion; torque stays raw; persisted to
+  `~/.odrtune/config.json`); a setpoint box with
   **Send** and an optional **live send**; a **Set current position** field (redefines the
   axis's absolute position — homing/zeroing); **Arm** / **Idle** / **Stop**
   shortcuts; and a **Motion shaping** group — an input-mode selector

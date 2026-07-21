@@ -31,6 +31,14 @@ CONTROL_MODES = {
 }
 
 
+def state_name(value: int) -> str:
+    """Human-readable name for an AxisState int."""
+    for name, v in AXIS_STATES.items():
+        if v == value:
+            return name
+    return str(value)
+
+
 def _get(obj, attr):
     """Read an attribute, returning NaN if this firmware doesn't expose it
     (so an absent effective-setpoint just shows a gap instead of crashing)."""
@@ -116,6 +124,10 @@ class Device:
 
     def set_closed_loop(self, enable: bool) -> None:
         self.set_requested_state(CLOSED_LOOP_CONTROL if enable else IDLE)
+
+    def estop(self) -> None:
+        """Emergency stop: immediately disarm the motor by requesting IDLE."""
+        self._axis.requested_state = IDLE
 
     def set_input_pos(self, pos: float) -> None:
         self._axis.controller.input_pos = pos

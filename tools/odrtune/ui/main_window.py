@@ -15,8 +15,9 @@ import time
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-                               QTabWidget, QSplitter)
+                               QTabWidget, QSplitter, QLabel, QPushButton)
 
+from core import device as device_mod
 from core.sampler import Sampler
 from ui.connect_panel import ConnectPanel
 from ui.plots_column import PlotsColumn
@@ -32,6 +33,7 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self.setWindowTitle("odrtune")
         self._sampler = None
+        self._device = None
         self._t0 = 0.0
         self._device_listeners = []
 
@@ -43,6 +45,22 @@ class MainWindow(QMainWindow):
         self._connect = ConnectPanel()
         self._connect.connected.connect(self._set_device)
         top.addWidget(self._connect, 0)
+
+        # Live driver status + emergency stop (visible on every tab).
+        status = QVBoxLayout()
+        self._state_lbl = QLabel("State: —")
+        self._err_lbl = QLabel("Error: —")
+        self._err_lbl.setWordWrap(True)
+        self._estop_btn = QPushButton("E-STOP")
+        self._estop_btn.setStyleSheet(
+            "background-color:#c62828; color:white; font-weight:bold; padding:6px;")
+        self._estop_btn.setEnabled(False)
+        self._estop_btn.clicked.connect(self._estop)
+        status.addWidget(self._state_lbl)
+        status.addWidget(self._err_lbl)
+        status.addWidget(self._estop_btn)
+        top.addLayout(status, 0)
+
         self._bus = TimePlot("Bus voltage (V)", [("bus_voltage", "")], compact=True)
         self._fet = TimePlot("FET temp (°C)", [("fet_temp", "")], compact=True)
         for p in (self._bus, self._fet):
@@ -87,16 +105,42 @@ class MainWindow(QMainWindow):
         self._device_listeners.append(panel)
 
     def _set_device(self, dev):
+        self._device = dev
         self._sampler = Sampler(dev, maxlen=6000)
         self._t0 = time.monotonic()
+        self._estop_btn.setEnabled(True)
         for p in self._device_listeners:
             p.set_device(dev)
         self._timer.start()
 
+    def _estop(self):
+        if self._device is None:
+            return
+        try:
+            self._device.estop()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _update_status(self):
+        if self._device is None:
+            return
+        try:
+            self._state_lbl.setText(
+                f"State: {device_mod.state_name(self._device.current_state())}")
+            err = self._device.errors()
+            active, disarm = err.get("active_errors", 0), err.get("disarm_reason", 0)
+            if active or disarm:
+                self._err_lbl.setText(
+                    f"Error: active=0x{active:X}  disarm=0x{disarm:X}")
+            else:
+                self._err_lbl.setText("Error: none")
+        except Exception:  # noqa: BLE001 - USB hiccup shouldn't crash the UI
+            pass
+
     def _tick(self):
         if self._sampler is None:
             return
-        self._control.update_state()   # keep the state readout live even when paused
+        self._update_status()          # keep state/error live even when paused
         if self._plots.paused():
             return                     # freeze graphs/sampling for inspection
         t = time.monotonic() - self._t0

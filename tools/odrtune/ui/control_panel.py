@@ -8,17 +8,18 @@ Stop shortcuts."""
 from __future__ import annotations
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
-                               QComboBox, QLabel, QDoubleSpinBox, QPushButton,
+                               QComboBox, QDoubleSpinBox, QPushButton,
                                QCheckBox, QGroupBox)
 
 from core import device as device_mod
 from core import settings
 
-_CONV_TIP = ("Units per motor revolution. Enter position/velocity setpoints "
-             "(and 'set current position') in your own units; the GUI divides "
-             "by this to send revolutions to the ODrive. Torque is not "
-             "converted. e.g. 360 to command degrees, or your gear/leadscrew "
-             "ratio. Saved to ~/.odrtune/config.json.")
+_CONV_TIP = ("Conversion / gear ratio. Position and velocity setpoints you "
+             "enter (and 'set current position') are multiplied by this before "
+             "being sent to the driver: driver_revs = your_value × conversion. "
+             "e.g. a 1:3 gearbox → enter 3, so commanding 1 output revolution "
+             "sends 3 motor revs. 1 = no conversion. Torque is not converted. "
+             "Saved to ~/.odrtune/config.json.")
 
 # (label, control_mode value, unit) for the setpoint modes we can command.
 # Position/velocity are shown as generic "units" because the conversion factor
@@ -68,7 +69,6 @@ class ControlPanel(QWidget):
         self._req = QComboBox()
         for name, value in device_mod.AXIS_STATES.items():
             self._req.addItem(name, value)
-        self._cur = QLabel("—")
         self._mode = QComboBox()
         for label, value, _unit in _MODES:
             self._mode.addItem(label, value)
@@ -98,9 +98,8 @@ class ControlPanel(QWidget):
         abs_row.addWidget(self._set_abs)
 
         form.addRow("Requested state:", self._req)
-        form.addRow("Current state:", self._cur)
         form.addRow("Control mode:", self._mode)
-        form.addRow("Units per rev:", self._conv)
+        form.addRow("Conversion:", self._conv)
         form.addRow("Setpoint:", sp_row)
         form.addRow("", self._live)
         form.addRow("Set current pos:", abs_row)
@@ -160,15 +159,6 @@ class ControlPanel(QWidget):
         self._update_ramp_visibility()
         self._set_enabled(True)
 
-    def update_state(self) -> None:
-        """Called each tick by MainWindow to refresh the current-state readout."""
-        if self._dev is None:
-            return
-        try:
-            self._cur.setText(self._state_name(self._dev.current_state()))
-        except Exception:  # noqa: BLE001 - USB hiccup shouldn't crash the UI
-            pass
-
     # --- handlers ---
     def _on_req(self):
         self._guard(lambda: self._dev.set_requested_state(self._req.currentData()))
@@ -198,7 +188,7 @@ class ControlPanel(QWidget):
             return
         mode = self._mode.currentData()
         value = self._setpoint.value()
-        rev = value / self._factor()   # user units -> revolutions
+        rev = value * self._factor()   # user units -> motor revolutions
         if mode == device_mod.CONTROL_MODE_POSITION:
             self._guard(lambda: self._dev.set_input_pos(rev))
         elif mode == device_mod.CONTROL_MODE_VELOCITY:
@@ -207,7 +197,7 @@ class ControlPanel(QWidget):
             self._guard(lambda: self._dev.set_input_torque(value))  # Nm, raw
 
     def _on_set_abs(self):
-        rev = self._abspos.value() / self._factor()
+        rev = self._abspos.value() * self._factor()
         self._guard(lambda: self._dev.set_current_position(rev))
 
     def _factor(self) -> float:
@@ -254,8 +244,8 @@ class ControlPanel(QWidget):
             return
         try:
             fn()
-        except Exception as exc:  # noqa: BLE001
-            self._cur.setText(f"error: {exc}")
+        except Exception:  # noqa: BLE001 - USB hiccup shouldn't crash the UI
+            pass
 
     @staticmethod
     def _sync_combo(combo: QComboBox, value):
@@ -264,10 +254,3 @@ class ControlPanel(QWidget):
             combo.blockSignals(True)
             combo.setCurrentIndex(idx)
             combo.blockSignals(False)
-
-    @staticmethod
-    def _state_name(value: int) -> str:
-        for name, v in device_mod.AXIS_STATES.items():
-            if v == value:
-                return name
-        return str(value)

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
                                QComboBox, QLabel, QDoubleSpinBox, QPushButton,
-                               QCheckBox)
+                               QCheckBox, QGroupBox)
 
 from core import device as device_mod
 
@@ -19,6 +19,34 @@ _MODES = [
     ("Velocity", device_mod.CONTROL_MODE_VELOCITY, "turns/s"),
     ("Torque", device_mod.CONTROL_MODE_TORQUE, "Nm"),
 ]
+
+# Input modes (fw 0.6.x InputMode enum) offered in the motion-shaping selector.
+_INPUT_MODES = [
+    ("Passthrough", 1),
+    ("Velocity ramp", 2),
+    ("Position filter", 3),
+    ("Trajectory (trap)", 5),
+    ("Torque ramp", 6),
+]
+
+# ramp/trajectory parameter -> (label, unit suffix)
+_RAMP_PARAMS = {
+    "vel_ramp_rate": ("Vel ramp rate", " turns/s²"),
+    "torque_ramp_rate": ("Torque ramp rate", " Nm/s"),
+    "input_filter_bandwidth": ("Filter bandwidth", " Hz"),
+    "trap_vel_limit": ("Traj vel limit", " turns/s"),
+    "trap_accel_limit": ("Traj accel limit", " turns/s²"),
+    "trap_decel_limit": ("Traj decel limit", " turns/s²"),
+}
+
+# which ramp params are relevant for each input mode value
+_MODE_PARAMS = {
+    1: [],                                                   # passthrough
+    2: ["vel_ramp_rate"],                                    # velocity ramp
+    3: ["input_filter_bandwidth"],                           # position filter
+    5: ["trap_vel_limit", "trap_accel_limit", "trap_decel_limit"],  # trap traj
+    6: ["torque_ramp_rate"],                                 # torque ramp
+}
 
 
 class ControlPanel(QWidget):
@@ -63,6 +91,24 @@ class ControlPanel(QWidget):
         form.addRow("Set current pos:", abs_row)
         root.addLayout(form)
 
+        # --- motion shaping (input mode + ramp/trajectory limits) ---
+        mgroup = QGroupBox("Motion shaping (ramp / trajectory)")
+        self._ramp_form = QFormLayout(mgroup)
+        self._imode = QComboBox()
+        for label, value in _INPUT_MODES:
+            self._imode.addItem(label, value)
+        self._ramp_form.addRow("Input mode:", self._imode)
+        self._ramp_rows = {}
+        for key, (label, suffix) in _RAMP_PARAMS.items():
+            spin = QDoubleSpinBox()
+            spin.setRange(0.0, 100000.0)
+            spin.setDecimals(3)
+            spin.setSuffix(suffix)
+            spin.valueChanged.connect(lambda v, k=key: self._on_ramp(k, v))
+            self._ramp_rows[key] = spin
+            self._ramp_form.addRow(label + ":", spin)
+        root.addWidget(mgroup)
+
         btns = QHBoxLayout()
         self._arm = QPushButton("Arm (closed loop)")
         self._idle = QPushButton("Idle")
@@ -75,6 +121,7 @@ class ControlPanel(QWidget):
         self._set_enabled(False)
         self._req.activated.connect(self._on_req)
         self._mode.activated.connect(self._on_mode)
+        self._imode.activated.connect(self._on_imode)
         self._send.clicked.connect(self._send_setpoint)
         self._setpoint.valueChanged.connect(self._on_value_changed)
         self._set_abs.clicked.connect(self._on_set_abs)
@@ -88,6 +135,13 @@ class ControlPanel(QWidget):
         self._sync_combo(self._req, dev.get_requested_state())
         self._sync_combo(self._mode, dev.get_control_mode())
         self._update_units()
+        mc = dev.get_motion_config()
+        self._sync_combo(self._imode, mc["input_mode"])
+        for key, spin in self._ramp_rows.items():
+            spin.blockSignals(True)
+            spin.setValue(mc[key])
+            spin.blockSignals(False)
+        self._update_ramp_visibility()
         self._set_enabled(True)
 
     def update_state(self) -> None:
@@ -110,6 +164,18 @@ class ControlPanel(QWidget):
     def _on_value_changed(self):
         if self._live.isChecked():
             self._send_setpoint()
+
+    def _on_imode(self):
+        self._update_ramp_visibility()
+        self._guard(lambda: self._dev.set_input_mode(self._imode.currentData()))
+
+    def _on_ramp(self, key, value):
+        self._guard(lambda: self._dev.set_motion(**{key: value}))
+
+    def _update_ramp_visibility(self):
+        active = set(_MODE_PARAMS.get(self._imode.currentData(), []))
+        for key, spin in self._ramp_rows.items():
+            self._ramp_form.setRowVisible(spin, key in active)
 
     def _send_setpoint(self):
         if self._dev is None:
@@ -149,8 +215,11 @@ class ControlPanel(QWidget):
                 return
 
     def _set_enabled(self, on: bool):
-        for w in (self._req, self._mode, self._setpoint, self._send, self._live,
-                  self._abspos, self._set_abs, self._arm, self._idle, self._stop):
+        widgets = [self._req, self._mode, self._setpoint, self._send, self._live,
+                   self._abspos, self._set_abs, self._imode, self._arm,
+                   self._idle, self._stop]
+        widgets += list(self._ramp_rows.values())
+        for w in widgets:
             w.setEnabled(on)
 
     def _guard(self, fn):

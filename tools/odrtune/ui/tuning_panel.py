@@ -1,53 +1,48 @@
-"""Gain tuning: sliders for pos_gain, vel_gain, vel_integrator_gain (live-apply
-to the device), plus a step-response test plotted with pyqtgraph.
+"""Tuning tab: adjust the three control loops independently.
 
-Sliders are integer Qt widgets scaled to floats via a per-gain factor."""
+Grouped inner-to-outer (the order you normally tune in):
+- Current loop: bandwidth + current limit.
+- Velocity loop: gain, integrator gain, velocity limit, integrator limit.
+- Position loop: gain.
+
+Each field writes to the ODrive as you change it. A step-response test at the
+bottom commands a position or velocity step and plots the response so you can
+judge the tuning by eye."""
 from __future__ import annotations
 
 import time
 
 import pyqtgraph as pg
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QSlider,
-                               QLabel, QPushButton, QDoubleSpinBox)
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
+                               QGroupBox, QLabel, QPushButton, QDoubleSpinBox,
+                               QComboBox)
 
+from core import device as device_mod
 from core.step_response import StepResponse
 
-# (name, max_value, resolution) -> slider int = value / resolution
-_GAINS = [
-    ("pos_gain", 200.0, 0.1),
-    ("vel_gain", 5.0, 0.001),
-    ("vel_integrator_gain", 10.0, 0.001),
+# group title -> [(key, label, unit suffix, decimals, max value), ...]
+_LOOPS = [
+    ("Current loop", [
+        ("current_control_bandwidth", "Bandwidth", " rad/s", 1, 100000.0),
+        ("current_soft_max", "Current soft max", " A", 2, 1000.0),
+    ]),
+    ("Velocity loop", [
+        ("vel_gain", "Gain", " Nm/(turn/s)", 4, 1000.0),
+        ("vel_integrator_gain", "Integrator gain", " Nm/turn", 4, 1000.0),
+        ("vel_limit", "Vel limit", " turns/s", 3, 100000.0),
+        ("vel_integrator_limit", "Integrator limit", "", 3, 100000.0),
+    ]),
+    ("Position loop", [
+        ("pos_gain", "Gain", " 1/s", 3, 100000.0),
+    ]),
 ]
 
-
-class _GainRow(QWidget):
-    def __init__(self, name, maxv, res, on_change):
-        super().__init__()
-        self._name = name
-        self._res = res
-        self._on_change = on_change
-        row = QHBoxLayout(self)
-        self._label = QLabel(name)
-        self._slider = QSlider(Qt.Horizontal)
-        self._slider.setMinimum(0)
-        self._slider.setMaximum(int(maxv / res))
-        self._value = QLabel("0.000")
-        row.addWidget(self._label)
-        row.addWidget(self._slider, 1)
-        row.addWidget(self._value)
-        self._slider.valueChanged.connect(self._changed)
-
-    def set_value(self, v: float):
-        self._slider.blockSignals(True)
-        self._slider.setValue(int(round(v / self._res)))
-        self._value.setText(f"{v:.3f}")
-        self._slider.blockSignals(False)
-
-    def _changed(self, raw):
-        v = raw * self._res
-        self._value.setText(f"{v:.3f}")
-        self._on_change(self._name, v)
+_STEP_CHANNELS = [("Position", "pos"), ("Velocity", "vel")]
+_STEP_MODE = {
+    "pos": device_mod.CONTROL_MODE_POSITION,
+    "vel": device_mod.CONTROL_MODE_VELOCITY,
+}
 
 
 class TuningPanel(QWidget):
@@ -56,52 +51,89 @@ class TuningPanel(QWidget):
         self._dev = None
         self._step = None
         self._t0 = 0.0
-        layout = QVBoxLayout(self)
+        root = QVBoxLayout(self)
 
-        self._rows = {}
-        for name, maxv, res in _GAINS:
-            row = _GainRow(name, maxv, res, self._apply_gain)
-            self._rows[name] = row
-            layout.addWidget(row)
+        # --- per-loop parameter groups ---
+        self._spins = {}
+        for title, params in _LOOPS:
+            group = QGroupBox(title)
+            form = QFormLayout(group)
+            for key, label, suffix, decimals, maxv in params:
+                spin = QDoubleSpinBox()
+                spin.setRange(0.0, maxv)
+                spin.setDecimals(decimals)
+                spin.setSuffix(suffix)
+                spin.valueChanged.connect(lambda v, k=key: self._apply(k, v))
+                self._spins[key] = spin
+                form.addRow(label + ":", spin)
+            root.addWidget(group)
 
-        step_bar = QHBoxLayout()
+        # --- step-response test ---
+        step_group = QGroupBox("Step-response test")
+        sv = QVBoxLayout(step_group)
+        bar = QHBoxLayout()
+        self._chan = QComboBox()
+        for label, ch in _STEP_CHANNELS:
+            self._chan.addItem(label, ch)
         self._target = QDoubleSpinBox()
-        self._target.setRange(-100.0, 100.0)
+        self._target.setRange(-100000.0, 100000.0)
         self._target.setValue(1.0)
-        self._btn = QPushButton("Step (position)")
-        self._btn.setEnabled(False)
-        step_bar.addWidget(QLabel("Target:"))
-        step_bar.addWidget(self._target)
-        step_bar.addWidget(self._btn)
-        layout.addLayout(step_bar)
-
+        self._btn = QPushButton("Run step")
+        bar.addWidget(QLabel("Channel:"))
+        bar.addWidget(self._chan)
+        bar.addWidget(QLabel("Target:"))
+        bar.addWidget(self._target)
+        bar.addWidget(self._btn)
+        sv.addLayout(bar)
         self._plot = pg.PlotWidget(title="Step response")
-        self._plot.showGrid(x=True, y=True)
-        self._curve = self._plot.plot(pen=pg.mkPen(width=2))
-        self._target_line = self._plot.plot(pen=pg.mkPen(style=Qt.DashLine))
-        layout.addWidget(self._plot, 1)
+        self._plot.showGrid(x=True, y=True, alpha=0.3)
+        self._curve = self._plot.plot(pen=pg.mkPen("#4fc3f7", width=2))
+        self._target_line = self._plot.plot(
+            pen=pg.mkPen("#ff8a65", style=Qt.PenStyle.DashLine))
+        sv.addWidget(self._plot, 1)
+        root.addWidget(step_group, 1)
 
         self._btn.clicked.connect(self._start_step)
         self._timer = QTimer(self)
         self._timer.setInterval(interval_ms)
         self._timer.timeout.connect(self._record)
+        self._set_enabled(False)
 
+    # --- device lifecycle ---
     def set_device(self, dev):
         self._dev = dev
-        self._btn.setEnabled(True)
-        gains = dev.get_gains()
-        for name, row in self._rows.items():
-            row.set_value(gains[name])
+        values = dev.get_tuning()
+        for key, spin in self._spins.items():
+            spin.blockSignals(True)
+            spin.setValue(values[key])
+            spin.blockSignals(False)
+        self._set_enabled(True)
 
-    def _apply_gain(self, name, value):
-        if self._dev is not None:
-            self._dev.set_gains(**{name: value})
+    # --- helpers ---
+    def _set_enabled(self, on: bool):
+        for s in self._spins.values():
+            s.setEnabled(on)
+        for w in (self._chan, self._target, self._btn):
+            w.setEnabled(on)
+
+    def _apply(self, key, value):
+        if self._dev is None:
+            return
+        try:
+            self._dev.set_tuning(**{key: value})
+        except Exception:  # noqa: BLE001 - USB hiccup shouldn't crash the UI
+            pass
 
     def _start_step(self):
         if self._dev is None:
             return
-        self._dev.set_closed_loop(True)
-        self._step = StepResponse(self._dev, channel="pos")
+        ch = self._chan.currentData()
+        try:
+            self._dev.set_control_mode(_STEP_MODE[ch])
+            self._dev.set_closed_loop(True)
+        except Exception:  # noqa: BLE001
+            pass
+        self._step = StepResponse(self._dev, channel=ch)
         self._step.begin(target=self._target.value())
         self._t0 = time.monotonic()
         self._timer.start()

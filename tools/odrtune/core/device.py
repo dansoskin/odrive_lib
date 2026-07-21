@@ -130,6 +130,71 @@ class Device:
         if vel_integrator_gain is not None:
             c.vel_integrator_gain = vel_integrator_gain
 
+    # --- motion shaping (input mode + ramp/trajectory limits) ---
+    def get_motion_config(self) -> dict:
+        c = self._axis.controller.config
+        tt = self._axis.trap_traj.config
+        return {
+            "input_mode": c.input_mode,
+            "vel_ramp_rate": c.vel_ramp_rate,
+            "torque_ramp_rate": c.torque_ramp_rate,
+            "input_filter_bandwidth": c.input_filter_bandwidth,
+            "trap_vel_limit": tt.vel_limit,
+            "trap_accel_limit": tt.accel_limit,
+            "trap_decel_limit": tt.decel_limit,
+        }
+
+    def set_input_mode(self, mode: int) -> None:
+        self._axis.controller.config.input_mode = mode
+
+    def set_motion(self, **kw) -> None:
+        c = self._axis.controller.config
+        tt = self._axis.trap_traj.config
+        if "vel_ramp_rate" in kw:
+            c.vel_ramp_rate = kw["vel_ramp_rate"]
+        if "torque_ramp_rate" in kw:
+            c.torque_ramp_rate = kw["torque_ramp_rate"]
+        if "input_filter_bandwidth" in kw:
+            c.input_filter_bandwidth = kw["input_filter_bandwidth"]
+        if "trap_vel_limit" in kw:
+            tt.vel_limit = kw["trap_vel_limit"]
+        if "trap_accel_limit" in kw:
+            tt.accel_limit = kw["trap_accel_limit"]
+        if "trap_decel_limit" in kw:
+            tt.decel_limit = kw["trap_decel_limit"]
+
+    # --- per-loop tuning (current / velocity / position) ---
+    def get_tuning(self) -> dict:
+        c = self._axis.controller.config
+        m = self._axis.config.motor
+        return {
+            "pos_gain": c.pos_gain,
+            "vel_gain": c.vel_gain,
+            "vel_integrator_gain": c.vel_integrator_gain,
+            "vel_limit": c.vel_limit,
+            "vel_integrator_limit": c.vel_integrator_limit,
+            "current_control_bandwidth": m.current_control_bandwidth,
+            "current_soft_max": m.current_soft_max,
+        }
+
+    def set_tuning(self, **kw) -> None:
+        c = self._axis.controller.config
+        m = self._axis.config.motor
+        if "pos_gain" in kw:
+            c.pos_gain = kw["pos_gain"]
+        if "vel_gain" in kw:
+            c.vel_gain = kw["vel_gain"]
+        if "vel_integrator_gain" in kw:
+            c.vel_integrator_gain = kw["vel_integrator_gain"]
+        if "vel_limit" in kw:
+            c.vel_limit = kw["vel_limit"]
+        if "vel_integrator_limit" in kw:
+            c.vel_integrator_limit = kw["vel_integrator_limit"]
+        if "current_control_bandwidth" in kw:
+            m.current_control_bandwidth = kw["current_control_bandwidth"]
+        if "current_soft_max" in kw:
+            m.current_soft_max = kw["current_soft_max"]
+
     # --- persistence ---
     def save(self) -> None:
         self._raw.save_configuration()

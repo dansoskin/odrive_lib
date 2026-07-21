@@ -14,12 +14,13 @@ from __future__ import annotations
 import time
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QTabWidget,
-                               QSplitter)
+from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+                               QTabWidget, QSplitter)
 
 from core.sampler import Sampler
 from ui.connect_panel import ConnectPanel
 from ui.plots_column import PlotsColumn
+from ui.time_plot import TimePlot
 from ui.control_panel import ControlPanel
 from ui.calibration_panel import CalibrationPanel
 from ui.tuning_panel import TuningPanel
@@ -36,9 +37,18 @@ class MainWindow(QMainWindow):
 
         central = QWidget()
         root = QVBoxLayout(central)
+
+        # Top bar: connect controls + the small bus-voltage / FET-temp monitors.
+        top = QHBoxLayout()
         self._connect = ConnectPanel()
         self._connect.connected.connect(self._set_device)
-        root.addWidget(self._connect)
+        top.addWidget(self._connect, 0)
+        self._bus = TimePlot("Bus voltage (V)", "bus_voltage", compact=True)
+        self._fet = TimePlot("FET temp (°C)", "fet_temp", compact=True)
+        for p in (self._bus, self._fet):
+            p.setMinimumWidth(220)
+            top.addWidget(p, 1)
+        root.addLayout(top)
 
         split = QSplitter(Qt.Horizontal)
 
@@ -61,8 +71,9 @@ class MainWindow(QMainWindow):
         root.addWidget(split, 1)
         self.setCentralWidget(central)
 
-        # Share one time axis across every graph: link all to a master.
-        self._live_plots = list(self._plots.plots)
+        # Share one time axis across every graph (top monitors + main column):
+        # link them all to a master.
+        self._live_plots = [self._bus, self._fet] + list(self._plots.plots)
         self._master = self._live_plots[0].plot_item
         for p in self._live_plots[1:]:
             p.plot_item.setXLink(self._master)
@@ -90,6 +101,8 @@ class MainWindow(QMainWindow):
             self._sampler.sample(t=t)
         except Exception:  # noqa: BLE001 - a USB hiccup shouldn't kill the UI
             return
+        self._bus.refresh(self._sampler)
+        self._fet.refresh(self._sampler)
         self._plots.refresh(self._sampler)
         self._control.update_state()
         window = self._plots.window_seconds()

@@ -14,22 +14,28 @@ python -m pip install -r requirements.txt
 cd tools/odrtune
 python __main__.py        # or, from the repo root: python tools/odrtune
 ```
-Click **Connect** (ODrive plugged in over USB). The window is split: feature
-tabs on the **left**, a persistent **plots column on the right** that stays
-visible on every tab. The plots column holds the global **Window (s)** control,
-two small monitor graphs (bus voltage, FET temperature), and the four large
-graphs — position, velocity, current (Iq), torque — each overlaying the
-**setpoint and measured** traces.
+Click **Connect** (ODrive plugged in over USB). The **top bar** holds the connect
+controls plus two small monitor graphs (bus voltage, FET temperature). Below,
+the window is split: feature tabs on the **left**, a persistent **plots column
+on the right** that stays visible on every tab. The plots column holds the
+global **Window (s)** control and the four large graphs — position, velocity,
+current (Iq), torque — each overlaying the **setpoint and measured** traces.
 
 Left-hand tabs:
 - **Control** — requested-state dropdown + live current-state readout; a control
   mode selector (Position/Velocity/Torque) that sets the ODrive mode and picks
   which setpoint is sent; a setpoint box (units follow the mode) with **Send**
   and an optional **live send**; a **Set current position** field (redefines the
-  axis's absolute position — homing/zeroing); and **Arm** / **Idle** / **Stop**
-  shortcuts.
+  axis's absolute position — homing/zeroing); **Arm** / **Idle** / **Stop**
+  shortcuts; and a **Motion shaping** group — an input-mode selector
+  (Passthrough / Velocity ramp / Position filter / Trajectory / Torque ramp)
+  with the ramp/acceleration fields relevant to the chosen mode (velocity ramp
+  rate, trajectory vel/accel/decel limits, filter bandwidth, torque ramp rate).
 - **Calibration** — run the full motor+encoder calibration and see the result.
-- **Tuning** — live gain sliders (pos/vel/vel-integrator) + position step response.
+- **Tuning** — adjust each control loop independently: **current** (bandwidth +
+  soft current limit), **velocity** (gain, integrator gain, vel limit,
+  integrator limit), **position** (gain); plus a position/velocity step-response
+  test. Tune inner-to-outer: current → velocity → position.
 - **Config** — backup/restore config JSON and save to the ODrive's NVM.
 
 Each graph has a header showing its latest value(s) and two toggles: **auto Y**

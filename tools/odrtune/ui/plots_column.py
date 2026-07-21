@@ -1,9 +1,9 @@
 """Persistent plots column, shown on the right of the window on every tab.
 
-Holds the global time-window spinbox and all live graphs: two small
-measured-only monitors (bus voltage, FET temperature) and the four large
-setpoint+measured graphs (position, velocity, current Iq, torque). The graphs
-live in a scroll area so a short window still shows them all.
+Holds the global time-window spinbox and the four large setpoint+measured
+graphs (position, velocity, current Iq, torque). The graphs live in a scroll
+area so a short window still shows them all. (The small bus-voltage and FET
+monitors live in the top bar next to the connect controls.)
 
 Sampling and the shared time base are owned by MainWindow, which calls
 refresh(sampler) each tick and X-links every plot in `plots`."""
@@ -49,9 +49,6 @@ class PlotsColumn(QWidget):
         col.setContentsMargins(0, 0, 0, 0)
 
         self._plots = []
-        self.bus_plot = TimePlot("Bus voltage (V)", "bus_voltage", compact=True)
-        self.fet_plot = TimePlot("FET temp (°C)", "fet_temp", compact=True)
-        self._plots += [self.bus_plot, self.fet_plot]
         for title, measured, setpoint in _MAIN:
             self._plots.append(TimePlot(title, measured, setpoint_key=setpoint))
         for p in self._plots:

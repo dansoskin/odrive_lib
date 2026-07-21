@@ -15,7 +15,8 @@ from __future__ import annotations
 
 import pyqtgraph as pg
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+                               QCheckBox, QToolButton)
 
 _MEASURED_PEN = pg.mkPen("#4fc3f7", width=2)                       # blue
 _SETPOINT_PEN = pg.mkPen("#ff8a65", width=1, style=Qt.PenStyle.DashLine)  # orange dashed
@@ -33,8 +34,10 @@ class TimePlot(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(1)
 
-        # --- header ---
-        header = QHBoxLayout()
+        # --- header (kept as a widget so we can measure it when collapsed) ---
+        self._header = QWidget()
+        header = QHBoxLayout(self._header)
+        header.setContentsMargins(2, 0, 2, 0)
         header.addWidget(QLabel(f"<b>{title}</b>"))
         header.addStretch(1)
         self._latest = QLabel("")
@@ -45,14 +48,27 @@ class TimePlot(QWidget):
         self._cursor = QCheckBox("cursor")
         header.addWidget(self._auto)
         header.addWidget(self._cursor)
-        root.addLayout(header)
+        self._collapse = QToolButton()
+        self._collapse.setCheckable(True)
+        self._collapse.setText("–")
+        self._collapse.setToolTip("Minimize graph")
+        self._collapse.setAutoRaise(True)
+        header.addWidget(self._collapse)
+        root.addWidget(self._header)
 
         # --- plot ---
         self._pw = pg.PlotWidget()
         self._pw.showGrid(x=True, y=True, alpha=0.3)
         self._pw.setLabel("bottom", "time", units="s")
         root.addWidget(self._pw, 1)
-        self.setMaximumHeight(150) if compact else self.setMinimumHeight(170)
+
+        if compact:
+            self._exp_min, self._exp_max = 0, 150
+        else:
+            self._exp_min, self._exp_max = 170, 16777215
+        self.setMinimumHeight(self._exp_min)
+        self.setMaximumHeight(self._exp_max)
+        self._collapse.toggled.connect(self._on_collapse)
 
         pi = self._pw.getPlotItem()
         if setpoint_key is not None:
@@ -96,6 +112,20 @@ class TimePlot(QWidget):
             self._latest.setText("" if last_m is None else f"{last_m:.4g}")
 
     # --- header actions ---
+    def _on_collapse(self, on: bool):
+        """Minimize: hide the plot, shrink to just the header (latest value
+        stays visible)."""
+        self._pw.setVisible(not on)
+        if on:
+            h = self._header.sizeHint().height()
+            self.setMinimumHeight(0)
+            self.setMaximumHeight(h)
+            self._collapse.setText("+")
+        else:
+            self.setMinimumHeight(self._exp_min)
+            self.setMaximumHeight(self._exp_max)
+            self._collapse.setText("–")
+
     def _on_auto(self, on: bool):
         vb = self._pw.getPlotItem().getViewBox()
         if on:

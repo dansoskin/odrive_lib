@@ -93,6 +93,12 @@ class TuningPanel(QWidget):
         sv.addWidget(self._plot, 1)
         root.addWidget(step_group, 1)
 
+        note = QLabel("Changes apply live (in RAM). Use Config → Save to NVM "
+                      "to keep them across power cycles.")
+        note.setWordWrap(True)
+        note.setStyleSheet("color: gray;")
+        root.addWidget(note)
+
         self._btn.clicked.connect(self._start_step)
         self._timer = QTimer(self)
         self._timer.setInterval(interval_ms)

@@ -60,7 +60,10 @@ class Device:
     def feedback(self) -> dict:
         a = self._axis
         return {
-            "pos": a.pos_vel_mapper.pos_rel,
+            # pos_abs is the absolute frame the controller tracks and that
+            # input_pos / set_abs_pos operate in (so "set current position" is
+            # reflected here); pos_rel is only relative-to-boot.
+            "pos": a.pos_vel_mapper.pos_abs,
             "pos_setpoint": a.controller.input_pos,
             "vel": a.pos_vel_mapper.vel,
             "vel_setpoint": a.controller.input_vel,

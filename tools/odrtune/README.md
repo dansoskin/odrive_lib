@@ -38,10 +38,18 @@ Left-hand tabs:
   test. Tune inner-to-outer: current → velocity → position.
 - **Config** — backup/restore config JSON and save to the ODrive's NVM.
 
-Each graph has a header showing its latest value(s) and two toggles: **auto Y**
+Each graph has a header showing its latest value(s) and three controls: **auto Y**
 (on by default — Y auto-scales to the data in the visible time window; turn off
-to zoom Y by hand) and **cursor** (a crosshair that follows the mouse and reads
-out time and value for measurement).
+to zoom Y by hand), **cursor** (a crosshair that follows the mouse and reads out
+time and value for measurement), and a **–/+** minimize button that collapses the
+graph to just its header (latest value still visible) so it takes no space.
+
+Note on the Position graph: it plots the **absolute** position (`pos_abs`) — the
+frame the controller and `input_pos`/`Set current position` operate in — so
+homing/zeroing is reflected on the graph.
+
+Tuning changes are applied **live in RAM**; use **Config → Save to NVM** to keep
+them across power cycles.
 
 All graphs in the right column share one time axis and one sampling clock, so
 they stay aligned when you pan/zoom or change the window span. The step-response

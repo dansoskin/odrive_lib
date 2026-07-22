@@ -30,7 +30,8 @@ class Sampler:
     def sample(self, t: float, keys=None) -> dict:
         # TODO(phase7): adaptive channel reads for high-rate capture — when
         # `keys` is a subset, read only those via a Device.feedback_subset().
-        # For now feedback() is one USB round-trip regardless of `keys`.
+        # Note: feedback() is ~17 sequential fibre attribute reads (one USB
+        # round-trip each), so trimming channels is a real latency win.
         fb = self._dev.feedback()
         self._buf["t"].append(t)
         for name in CHANNELS:

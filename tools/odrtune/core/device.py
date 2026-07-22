@@ -145,6 +145,22 @@ def _getp(root, path):
         return float("nan")
 
 
+def _getp_first(root, *paths):
+    """Return the first finite value among several dotted paths (guarded).
+    Used for position feedback: prefer the controller's estimate, fall back to
+    the absolute frame, then the boot-relative frame — so we never plot NaN
+    just because e.g. pos_abs has no valid absolute reference yet."""
+    for path in paths:
+        v = _getp(root, path)
+        try:
+            if not math.isnan(float(v)):
+                return v
+        except (TypeError, ValueError):
+            if v is not None:
+                return v
+    return float("nan")
+
+
 def values_match(requested, actual) -> bool:
     """True if a written value read back as expected.
 
@@ -208,12 +224,16 @@ class Device:
         a = self._axis
         # For each channel: measured (actual), target (raw command you gave),
         # and ref (the controller's effective setpoint = where the motor should
-        # be right now, after ramp/filter/trajectory). pos uses pos_abs (the
-        # absolute frame the controller and set_abs_pos operate in). Every path
-        # is guarded (_getp) so one attribute a given firmware/config lacks
-        # becomes a NaN gap instead of killing the whole sampling loop.
+        # be right now, after ramp/filter/trajectory). "pos" prefers the
+        # controller's own estimate (same frame as the setpoints), then the
+        # absolute frame, then the boot-relative frame — pos_abs is NaN until
+        # the axis has a valid absolute reference (absolute encoder / homing),
+        # so a plain incremental setup would otherwise plot NaN. Every path is
+        # guarded (_getp) so one attribute a given firmware/config lacks becomes
+        # a NaN gap instead of killing the whole sampling loop.
         return {
-            "pos": _getp(a, "pos_vel_mapper.pos_abs"),
+            "pos": _getp_first(a, "pos_estimate", "pos_vel_mapper.pos_abs",
+                               "pos_vel_mapper.pos_rel"),
             "pos_target": _getp(a, "controller.input_pos"),
             "pos_ref": _getp(a, "controller.pos_setpoint"),
             "vel": _getp(a, "pos_vel_mapper.vel"),

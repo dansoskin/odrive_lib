@@ -16,6 +16,7 @@ import inspect
 import json
 import logging
 
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                                QLabel, QFileDialog, QDialog, QGroupBox,
                                QCheckBox, QDialogButtonBox)
@@ -88,6 +89,10 @@ class RestoreDialog(QDialog):
 
 
 class ConfigPanel(QWidget):
+    # Emitted after a successful reboot request: the USB link drops, so the
+    # window tears sampling down and releases the device exactly as a disconnect.
+    rebooted = Signal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._dev = None
@@ -109,11 +114,17 @@ class ConfigPanel(QWidget):
                        "(needs the odrive package + a real device).")
             b.setToolTip(bar_tip)
             native.addWidget(b)
+        self._reboot_btn = QPushButton("Reboot device")
+        self._reboot_btn.setToolTip(
+            "Reboot the ODrive. The USB connection drops — you'll need to "
+            "reconnect.")
+        native.addWidget(self._reboot_btn)
         native.addStretch(1)
         layout.addLayout(native)
 
         self._all_btns = (self._backup_btn, self._restore_btn, self._save_btn,
-                          self._native_backup_btn, self._native_restore_btn)
+                          self._native_backup_btn, self._native_restore_btn,
+                          self._reboot_btn)
         for b in self._all_btns:
             b.setEnabled(False)
 
@@ -127,6 +138,7 @@ class ConfigPanel(QWidget):
         self._save_btn.clicked.connect(self._save)
         self._native_backup_btn.clicked.connect(self._native_backup_dialog)
         self._native_restore_btn.clicked.connect(self._native_restore_dialog)
+        self._reboot_btn.clicked.connect(self._reboot)
 
     def set_device(self, dev):
         self._dev = dev
@@ -213,6 +225,19 @@ class ConfigPanel(QWidget):
         save_to_nvm(self._dev)
         self._status.setText("Saved to NVM.")
         self._status.setStyleSheet("")
+
+    def _reboot(self):
+        if self._dev is None:
+            return
+        self._status.setText("Rebooting… (device will disconnect)")
+        self._status.setStyleSheet("")
+        try:
+            self._dev.reboot()
+        except Exception as exc:  # noqa: BLE001 - USB drops on reboot
+            self._status.setText(f"Reboot failed: {exc}")
+            self._status.setStyleSheet("color: red;")
+            return
+        self.rebooted.emit()
 
     # --- native (host-side) full-device backup/restore ---
     def native_backup_to(self, path: str):

@@ -25,6 +25,7 @@ from ui.time_plot import TimePlot
 from ui.control_panel import ControlPanel
 from ui.calibration_panel import CalibrationPanel
 from ui.tuning_panel import TuningPanel
+from ui.capture_panel import CapturePanel
 from ui.config_panel import ConfigPanel
 
 
@@ -82,6 +83,11 @@ class MainWindow(QMainWindow):
         self._add_listener_tab("Calibration", CalibrationPanel())
         self._tuning = TuningPanel()
         self._add_listener_tab("Tuning", self._tuning)
+        self._capture = CapturePanel()
+        # Capture needs the USB bandwidth: pause live sampling while it runs.
+        self._capture.capture_started.connect(self._on_capture_started)
+        self._capture.capture_finished.connect(self._on_capture_finished)
+        self._add_listener_tab("Capture", self._capture)
         self._add_listener_tab("Config", ConfigPanel())
         split.addWidget(self._tabs)
 
@@ -144,6 +150,15 @@ class MainWindow(QMainWindow):
         self._err_lbl.setText("Error: —")
         for p in self._device_listeners:
             p.set_device(None)
+
+    def _on_capture_started(self):
+        """Free the USB link for a high-rate capture: stop live sampling."""
+        self._timer.stop()
+
+    def _on_capture_finished(self):
+        """Resume live sampling after a capture, if still connected."""
+        if self._device is not None:
+            self._timer.start()
 
     def _estop(self):
         if self._device is None:

@@ -85,6 +85,21 @@ Left-hand tabs:
   toggle (min-side limits write −∞ instead). **Hover
   any field** for a hint on what it does and how it affects the loop, and expand
   the collapsible **Tuning guide** at the top for ODrive's guidelines plus tips.
+- **Capture** — record signals at the native **8 kHz** control-loop rate using
+  the ODrive's **onboard oscilloscope** (the live graphs only reach ~20 Hz, too
+  coarse for current-loop tuning). Pick a **preset** (current loop Iq, current
+  D/Q, current error + modulation, velocity loop, position loop, torque) or type
+  any comma-separated property paths; choose the **trigger point** (0..1: where
+  in the window the trigger sits — the recording also auto-triggers if the axis
+  enters IDLE, e.g. on an error) and a **timeout**. Optionally **apply a step**
+  (torque Nm / velocity turns/s) during the capture to see the loop response
+  (*the motor moves* — the amplitude is restored and the axis returned to its
+  prior mode/state afterwards). The result is plotted on its own millisecond time
+  base (trigger at 0) with one curve per property, a header showing the sample
+  count and window length, and an **Export CSV…** button. Requires firmware
+  **0.6.12+** (older firmware lacks the feature or has a trigger-point hang bug);
+  a banner reports availability. Live graphs pause during a capture because it
+  needs the full USB bandwidth.
 - **Config** — backup/restore config JSON and save to the ODrive's NVM.
   **Backup** writes a schema-2 snapshot (every Tuning parameter + motion shaping
   + control mode, plus device serial/firmware; ±∞ values are preserved).

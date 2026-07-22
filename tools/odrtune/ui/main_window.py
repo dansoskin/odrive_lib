@@ -1,9 +1,10 @@
 """Top-level window.
 
-Layout: a connect bar across the top, then a horizontal splitter with the
-feature tabs (Control, Calibration, Tuning, Config) on the LEFT and a persistent
-plots column on the RIGHT. The plots column (window control + bus-voltage/FET
-monitors + position/velocity/Iq/torque graphs) stays visible on every tab.
+Layout: a connect bar across the top, then a horizontal splitter with three
+columns — the Control panel (always visible) on the LEFT, the feature tabs
+(Tuning, Capture, Config) in the MIDDLE, and a persistent plots column on the
+RIGHT. The plots column (window control + bus-voltage/FET monitors +
+position/velocity/Iq/torque graphs) stays visible at all times.
 
 MainWindow owns the single Sampler and the single QTimer that drives it, so
 every graph shares one time base. All graphs are X-linked to a master, and each
@@ -15,7 +16,8 @@ import time
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-                               QTabWidget, QSplitter, QLabel, QPushButton)
+                               QTabWidget, QSplitter, QScrollArea, QLabel,
+                               QPushButton)
 
 from core import device as device_mod
 from core.sampler import Sampler
@@ -23,7 +25,6 @@ from ui.connect_panel import ConnectPanel
 from ui.plots_column import PlotsColumn
 from ui.time_plot import TimePlot
 from ui.control_panel import ControlPanel
-from ui.calibration_panel import CalibrationPanel
 from ui.tuning_panel import TuningPanel
 from ui.capture_panel import CapturePanel
 from ui.config_panel import ConfigPanel
@@ -88,11 +89,17 @@ class MainWindow(QMainWindow):
 
         split = QSplitter(Qt.Horizontal)
 
-        # LEFT: feature tabs
-        self._tabs = QTabWidget()
+        # LEFT: the Control panel, always visible (tall → wrap in a scroll area).
+        # It's no longer a tab, so register it as a device listener by hand.
         self._control = ControlPanel()
-        self._add_listener_tab("Control", self._control)
-        self._add_listener_tab("Calibration", CalibrationPanel())
+        self._device_listeners.append(self._control)
+        control_scroll = QScrollArea()
+        control_scroll.setWidgetResizable(True)
+        control_scroll.setWidget(self._control)
+        split.addWidget(control_scroll)
+
+        # MIDDLE: feature tabs (Tuning, Capture, Config).
+        self._tabs = QTabWidget()
         self._tuning = TuningPanel()
         self._add_listener_tab("Tuning", self._tuning)
         self._capture = CapturePanel()
@@ -100,15 +107,19 @@ class MainWindow(QMainWindow):
         self._capture.capture_started.connect(self._on_capture_started)
         self._capture.capture_finished.connect(self._on_capture_finished)
         self._add_listener_tab("Capture", self._capture)
-        self._add_listener_tab("Config", ConfigPanel())
+        self._config = ConfigPanel()
+        # A reboot drops the USB link → tear down exactly like a disconnect.
+        self._config.rebooted.connect(self._on_disconnected)
+        self._add_listener_tab("Config", self._config)
         split.addWidget(self._tabs)
 
         # RIGHT: persistent plots column
         self._plots = PlotsColumn()
         split.addWidget(self._plots)
         split.setStretchFactor(0, 0)
-        split.setStretchFactor(1, 1)
-        split.setSizes([380, 720])
+        split.setStretchFactor(1, 0)
+        split.setStretchFactor(2, 1)
+        split.setSizes([340, 400, 720])
 
         root.addWidget(split, 1)
         self.setCentralWidget(central)

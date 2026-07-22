@@ -30,8 +30,10 @@ still required), a **Clear errors** button (device-level `clear_errors`; also
 re-arms the brake resistor and clears a stale procedure result), and two small
 monitor graphs (bus voltage, FET temperature).
 Below,
-the window is split: feature tabs on the **left**, a persistent **plots column
-on the right** that stays visible on every tab. The plots column holds the
+the window is split into **three columns**: the **Control** panel on the
+**left** (always visible), the feature **tabs** (Tuning / Capture / Config) in
+the **middle**, and a persistent **plots column on the right** that stays
+visible at all times. The plots column holds the
 global **Window (s)** control, a **Pause** toggle (freezes sampling so you can
 inspect — pan/zoom/cursor still work), and the four large graphs — position,
 velocity, current (Iq), torque. Titles name the **motor frame** explicitly
@@ -46,8 +48,9 @@ computed client-side, hidden by default). Torque adds **output**
 actual + command (`Iq_setpoint`). Traces hidden by default (error, integrator)
 have their per-trace checkbox unchecked; tick it to show them.
 
-Left-hand tabs:
-- **Control** — requested-state dropdown; a control mode selector
+Panels:
+- **Control** (left, always visible) — requested-state dropdown (includes
+  **Full calibration**, so motor+encoder calibration runs from here); a control mode selector
   (Position/Velocity/Torque) that sets the ODrive mode and picks which setpoint
   is sent; a **Conversion** (gear/units) factor — position/velocity setpoints are
   multiplied by it before sending (`driver_revs = your_value × conversion`, e.g. a
@@ -63,10 +66,9 @@ Left-hand tabs:
   with the ramp/acceleration fields relevant to the chosen mode (velocity ramp
   rate, trajectory vel/accel/decel limits, filter bandwidth, torque ramp rate);
   and a **Back-and-forth** sequence (points A/B + dwell) that drives the motor
-  in the *currently configured input mode* — unlike the Tuning-tab sequence
-  (which forces Passthrough for clean steps), this one honors your ramp /
-  trajectory / filter so you can inspect the shaped motion on the graphs.
-- **Calibration** — run the full motor+encoder calibration and see the result.
+  in the *currently configured input mode*, honoring your ramp / trajectory /
+  filter so you can inspect the shaped motion on the graphs (set **Passthrough**
+  for clean step responses while tuning).
 - **Tuning** — adjust the key control-loop parameters independently, grouped
   inner-to-outer (scrollable): a **Diagnostics** readout at the top (live
   read-only effective current limit, effective torque setpoint, and velocity
@@ -81,11 +83,9 @@ Left-hand tabs:
   ratio), **motor model** (torque constant, phase R/L, PM flux linkage, model
   L_d/L_q + their validity flags — normally from calibration), and **report
   filtering** (reported-only Iq/Id and power/torque filter settings that do not
-  affect control). Plus a
-  **back-and-forth sequence** (drive the motor between points A and B at a set
-  dwell) so you can watch the repeated step on the right-hand graphs while you
-  adjust gains — this one **forces Passthrough** for clean step responses (the
-  Control-tab sequence keeps your input mode instead). A collapsible **Tuning
+  affect control). Drive the motor with the **back-and-forth sequence in the
+  Control panel** (left, always visible) and watch the repeated step on the
+  right-hand graphs while you adjust these gains. A collapsible **Tuning
   guide** at the top gives a full inside-out walkthrough. Tune inner-to-outer:
   feedback → current (+FF) → velocity →
   position. Parameters your firmware doesn't expose are shown disabled. Edits are
@@ -122,7 +122,9 @@ Left-hand tabs:
   gated in a separate **Sensitive** section that is **unchecked by default**
   and warns that wrong values can damage hardware. A second row offers ODrive's
   host-side **native full backup/restore** of the whole device config tree
-  (needs the `odrive` package + a real device; unavailable otherwise).
+  (needs the `odrive` package + a real device; unavailable otherwise), plus a
+  **Reboot device** button (reboots the ODrive; the USB link drops and the app
+  releases the device, so you'll need to reconnect).
 
 Each graph has a header showing its latest value(s) and three controls: **auto Y**
 (on by default — Y auto-scales to the data in the visible time window; turn off

@@ -3,9 +3,9 @@
 Grouped inner-to-outer (the order you normally tune in): feedback (encoder
 bandwidths) -> current loop + its feedforwards -> velocity loop -> position loop
 -> gain scheduling -> motor model. Edits are debounced then written to the
-ODrive and verified by read-back (✓ or an error in the status line). At the
-bottom, a back-and-forth sequence drives the motor between two points so you can
-watch the repeated response on the (always-visible) right-hand graphs.
+ODrive and verified by read-back (✓ or an error in the status line). Drive the
+motor with the back-and-forth sequence in the Control panel (left, always
+visible) and watch the repeated response on the right-hand graphs.
 
 Parameters the connected firmware doesn't expose are shown disabled. Changes are
 live in RAM; use Config -> Save to NVM to persist."""
@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
                                QGroupBox, QLabel, QPushButton, QToolButton,
-                               QDoubleSpinBox, QComboBox, QCheckBox, QScrollArea)
+                               QDoubleSpinBox, QCheckBox, QScrollArea)
 
 from core import device as device_mod
 
@@ -305,10 +305,13 @@ _GUIDE_HTML = (
 
     "<p><b>Which tool does what</b></p>"
     "<ul>"
-    "<li><b>Calibration tab</b> &mdash; motor + encoder calibration. Do this first.</li>"
-    "<li><b>This Tuning tab</b> &mdash; set every loop parameter. The "
-    "<b>Back-and-forth sequence</b> (bottom) drives repeated A&harr;B steps; watch "
-    "the right-hand live graphs and hit <b>Pause</b> to freeze and inspect a step.</li>"
+    "<li><b>Control panel</b> (left, always visible) &mdash; command the motor: "
+    "requested state (including <b>Full calibration</b> &mdash; do this first), "
+    "control mode, setpoints, and motion shaping. Its <b>Back-and-forth "
+    "sequence</b> drives repeated A&harr;B steps in whatever input mode you pick, "
+    "so you can drive the motor while watching these parameters and the graphs; "
+    "hit <b>Pause</b> to freeze and inspect a step.</li>"
+    "<li><b>This Tuning tab</b> &mdash; set every loop parameter.</li>"
     "<li><b>Capture tab</b> &mdash; 8&nbsp;kHz onboard-scope capture, the only tool "
     "fast enough to see the <i>current loop</i>. Use it to verify the current loop "
     "and to see fine step detail on any loop.</li>"
@@ -318,7 +321,8 @@ _GUIDE_HTML = (
 
     "<p><b>0. Prerequisites</b></p>"
     "<ul>"
-    "<li>Run the full <b>Calibration</b> &mdash; you need valid phase R/L, flux "
+    "<li>Run the full <b>Calibration</b> (Control panel &rarr; requested state "
+    "&rarr; <b>Full calibration</b>) &mdash; you need valid phase R/L, flux "
     "linkage and encoder offset. Confirm the top bar shows <b>Result: SUCCESS</b> "
     "and no error (use <b>Clear errors</b> if needed).</li>"
     "<li>Set safe limits before spinning: <tt>current_soft_max</tt> / "
@@ -350,22 +354,24 @@ _GUIDE_HTML = (
 
     "<p><b>3. Velocity loop</b></p>"
     "<ul>"
-    "<li>Use <b>Velocity</b> mode in <b>Passthrough</b> input mode (the sequence "
-    "forces Passthrough for you).</li>"
+    "<li>Use <b>Velocity</b> control mode, and set <b>Passthrough</b> in the "
+    "Control panel's Motion-shaping selector for clean step responses (the "
+    "Back-and-forth sequence honors whatever input mode you choose).</li>"
     "<li>Set <tt>vel_integrator_gain</tt> = 0 (tune P before I).</li>"
     "<li>Raise <tt>vel_gain</tt> ~30% per step until you hear whine / see vibration "
     "on the velocity graph, then back off to about half.</li>"
     "<li>Raise <tt>vel_integrator_gain</tt> (start near the numeric value of "
     "<tt>vel_gain</tt>) until a velocity step is slightly underdamped, then halve "
     "it. It removes steady-state error under load.</li>"
-    "<li>Drive steps with the <b>Back-and-forth sequence</b> (Velocity, points "
-    "A/B) and compare <b>actual</b> vs <b>ideal</b> on the velocity graph.</li>"
+    "<li>Drive steps with the Control panel's <b>Back-and-forth sequence</b> "
+    "(Velocity, points A/B) and compare <b>actual</b> vs <b>ideal</b> on the "
+    "velocity graph.</li>"
     "</ul>"
 
     "<p><b>4. Position loop</b></p>"
     "<ul>"
-    "<li>Switch the sequence to <b>Position</b>. Raise <tt>pos_gain</tt> until a "
-    "position step just begins to overshoot / ring, then back off until it "
+    "<li>Switch the Control panel to <b>Position</b> mode. Raise <tt>pos_gain</tt> "
+    "until a position step just begins to overshoot / ring, then back off until it "
     "disappears. The position loop is P-only; its output is a velocity command "
     "clamped by <tt>vel_limit</tt>.</li>"
     "</ul>"
@@ -377,7 +383,7 @@ _GUIDE_HTML = (
     "<li>Current feedforward (<tt>wL</tt> / <tt>bEMF</tt> / <tt>dI_dt</tt>) improves "
     "current tracking at high speed.</li>"
     "<li>Command shaping (velocity ramp, trajectory, position filter) lives in the "
-    "<b>Control</b> tab &mdash; add it only after the loops are tuned in Passthrough.</li>"
+    "<b>Control</b> panel &mdash; add it only after the loops are tuned in Passthrough.</li>"
     "<li>Enable <b>gain scheduling</b> if high gains buzz at standstill.</li>"
     "</ul>"
 
@@ -399,19 +405,11 @@ _GUIDE_HTML = (
     "to keep them across power cycles.</p>"
 )
 
-_SEQ_CHANNELS = [("Position", "pos"), ("Velocity", "vel")]
-_SEQ_MODE = {
-    "pos": device_mod.CONTROL_MODE_POSITION,
-    "vel": device_mod.CONTROL_MODE_VELOCITY,
-}
-
 
 class TuningPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._dev = None
-        self._seq_i = 0
-        self._seq_saved = {}     # axis state saved on sequence Start, restored on Stop
         self._specs = {}         # key -> FloatSpec | BoolSpec
         self._inf_btns = {}      # key -> QToolButton (allow_inf fields)
         self._apply_btns = {}    # key -> QPushButton (requires_idle fields)
@@ -522,49 +520,20 @@ class TuningPanel(QWidget):
                     self._widgets[key] = (_B, w)
             root.addWidget(group)
 
-        # --- back-and-forth sequence ---
-        seq_group = QGroupBox("Back-and-forth sequence")
-        sform = QFormLayout(seq_group)
-        self._seq_chan = QComboBox()
-        for label, ch in _SEQ_CHANNELS:
-            self._seq_chan.addItem(label, ch)
-        self._seq_a = QDoubleSpinBox()
-        self._seq_a.setRange(-100000.0, 100000.0)
-        self._seq_a.setValue(0.0)
-        self._seq_b = QDoubleSpinBox()
-        self._seq_b.setRange(-100000.0, 100000.0)
-        self._seq_b.setValue(1.0)
-        self._seq_dwell = QDoubleSpinBox()
-        self._seq_dwell.setRange(0.05, 3600.0)
-        self._seq_dwell.setDecimals(2)
-        self._seq_dwell.setValue(1.0)
-        self._seq_dwell.setSuffix(" s")
-        self._seq_btn = QPushButton("Start")
-        self._seq_btn.setCheckable(True)
-        sform.addRow("Channel:", self._seq_chan)
-        sform.addRow("Point A:", self._seq_a)
-        sform.addRow("Point B:", self._seq_b)
-        sform.addRow("Dwell:", self._seq_dwell)
-        sform.addRow("", self._seq_btn)
-        root.addWidget(seq_group)
-
         # write status: shows "key ✓" or "key FAILED: ..." (red) after each batch
         self._status = QLabel("")
         self._status.setWordWrap(True)
         root.addWidget(self._status)
 
-        note = QLabel("Sequence drives the motor between A and B (watch the "
-                      "graphs on the right). Changes apply live in RAM; use "
-                      "Config -> Save to NVM to keep them.")
+        note = QLabel("Drive the motor with the back-and-forth sequence in the "
+                      "Control panel (left) and watch the graphs on the right. "
+                      "Changes apply live in RAM; use Config -> Save to NVM to "
+                      "keep them.")
         note.setWordWrap(True)
         note.setStyleSheet("color: gray;")
         root.addWidget(note)
         root.addStretch(1)
 
-        self._seq_btn.toggled.connect(self._toggle_seq)
-        self._seq_dwell.valueChanged.connect(self._on_dwell_changed)
-        self._seq_timer = QTimer(self)
-        self._seq_timer.timeout.connect(self._seq_tick)
         self._set_enabled(False)
 
     # --- device lifecycle ---
@@ -597,9 +566,6 @@ class TuningPanel(QWidget):
                 apply_btn.setEnabled(present)
             if present:
                 self._load_key(key, values[key])
-        for w in (self._seq_chan, self._seq_a, self._seq_b, self._seq_dwell,
-                  self._seq_btn):
-            w.setEnabled(True)
 
     def update_diagnostics(self, diag: dict) -> None:
         """Refresh the read-only diagnostics labels from Device.diagnostics().
@@ -622,9 +588,6 @@ class TuningPanel(QWidget):
             btn.setEnabled(on)
         for btn in self._apply_btns.values():
             btn.setEnabled(on)
-        for w in (self._seq_chan, self._seq_a, self._seq_b, self._seq_dwell,
-                  self._seq_btn):
-            w.setEnabled(on)
 
     def _load_key(self, key, value):
         """Push a device value into its widget without emitting write signals.
@@ -737,93 +700,3 @@ class TuningPanel(QWidget):
             return
         if key in values:
             self._load_key(key, values[key])
-
-    # --- back-and-forth sequence ---
-    def _toggle_seq(self, on: bool):
-        if self._dev is None:
-            self._seq_btn.setChecked(False)
-            return
-        if on:
-            ch = self._seq_chan.currentData()
-            # Save what we're about to change so Stop can put it all back.
-            try:
-                self._seq_saved = {
-                    "control_mode": self._dev.get_control_mode(),
-                    "input_mode": self._dev.get_motion_config()["input_mode"],
-                    "requested_state": self._dev.get_requested_state(),
-                }
-            except Exception:  # noqa: BLE001 - a USB hiccup mustn't crash the UI
-                self._seq_saved = {}
-            try:
-                self._dev.set_input_mode(1)              # PASSTHROUGH: clean steps
-                self._dev.set_control_mode(_SEQ_MODE[ch])
-            except Exception:  # noqa: BLE001
-                pass
-            self._seq_i = 0
-            self._send_seq()                             # point A = safe initial setpoint
-            try:
-                self._dev.set_closed_loop(True)          # arm only after a setpoint exists
-            except Exception:  # noqa: BLE001
-                pass
-            self._seq_timer.start(max(50, int(self._seq_dwell.value() * 1000)))
-            self._seq_btn.setText("Stop")
-        else:
-            self._seq_timer.stop()
-            self._stop_seq_safe()
-            self._seq_btn.setText("Start")
-
-    def _stop_seq_safe(self):
-        """Command a mode-appropriate safe stop, then restore the saved modes.
-
-        Velocity -> zero speed; position -> hold the current position. Then
-        restore input_mode and control_mode, and if the axis was IDLE when the
-        sequence started, request IDLE again. Every device call is guarded so a
-        USB hiccup during teardown can't crash the UI."""
-        if self._dev is None:
-            return
-        ch = self._seq_chan.currentData()
-        try:
-            if ch == "vel":
-                self._dev.set_input_vel(0.0)
-            else:
-                self._dev.set_input_pos(self._dev.feedback()["pos"])
-        except Exception:  # noqa: BLE001
-            pass
-        saved = self._seq_saved or {}
-        try:
-            if "input_mode" in saved:
-                self._dev.set_input_mode(saved["input_mode"])
-        except Exception:  # noqa: BLE001
-            pass
-        try:
-            if "control_mode" in saved:
-                self._dev.set_control_mode(saved["control_mode"])
-        except Exception:  # noqa: BLE001
-            pass
-        try:
-            if saved.get("requested_state") == device_mod.IDLE:
-                self._dev.set_requested_state(device_mod.IDLE)
-        except Exception:  # noqa: BLE001
-            pass
-
-    def _on_dwell_changed(self, value):
-        """Retime a running sequence when the dwell spinbox changes."""
-        if self._seq_timer.isActive():
-            self._seq_timer.setInterval(max(50, int(value * 1000)))
-
-    def _seq_tick(self):
-        self._seq_i ^= 1
-        self._send_seq()
-
-    def _send_seq(self):
-        if self._dev is None:
-            return
-        ch = self._seq_chan.currentData()
-        value = self._seq_b.value() if self._seq_i else self._seq_a.value()
-        try:
-            if ch == "pos":
-                self._dev.set_input_pos(value)
-            else:
-                self._dev.set_input_vel(value)
-        except Exception:  # noqa: BLE001
-            pass

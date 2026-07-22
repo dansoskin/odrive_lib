@@ -18,14 +18,17 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QCheckBox, QToolButton)
 
-# pens by trace position: actual / target / ideal / output / integrator / (extra)
+# trace colors by position: actual / target / ideal / output / integrator / (extra)
+# _PEN_COLORS drives both the plot pens and the per-trace checkbox label color,
+# so the checkboxes double as the legend (index-aligned with the pens).
+_PEN_COLORS = ["#4fc3f7", "#ff8a65", "#81c784", "#ba68c8", "#ffd54f", "#f06292"]
 _PENS = [
-    pg.mkPen("#4fc3f7", width=2),                                  # blue solid
-    pg.mkPen("#ff8a65", width=1, style=Qt.PenStyle.DashLine),      # orange dashed
-    pg.mkPen("#81c784", width=1, style=Qt.PenStyle.DotLine),       # green dotted
-    pg.mkPen("#ba68c8", width=1, style=Qt.PenStyle.DashDotLine),   # purple
-    pg.mkPen("#ffd54f", width=1),                                  # amber
-    pg.mkPen("#f06292", width=1, style=Qt.PenStyle.DashLine),      # pink dashed
+    pg.mkPen(_PEN_COLORS[0], width=2),                                  # blue solid
+    pg.mkPen(_PEN_COLORS[1], width=1, style=Qt.PenStyle.DashLine),      # orange dashed
+    pg.mkPen(_PEN_COLORS[2], width=1, style=Qt.PenStyle.DotLine),       # green dotted
+    pg.mkPen(_PEN_COLORS[3], width=1, style=Qt.PenStyle.DashDotLine),   # purple
+    pg.mkPen(_PEN_COLORS[4], width=1),                                  # amber
+    pg.mkPen(_PEN_COLORS[5], width=1, style=Qt.PenStyle.DashLine),      # pink dashed
 ]
 _CURSOR_PEN = pg.mkPen("#9e9e9e", width=1, style=Qt.PenStyle.DashLine)
 
@@ -51,12 +54,16 @@ class TimePlot(QWidget):
         # Per-trace visibility toggles (multi-trace plots only), between the
         # title and the latest-value label. Unchecking hides that curve and
         # drops it from the latest-value text.
+        # These checkboxes double as the color legend: each label is styled with
+        # its trace's pen color (index-aligned with _PEN_COLORS / _PENS), which
+        # is why we no longer add pyqtgraph's own clickable legend below.
         self._trace_cb = []
         if len(self._traces) > 1:
             header.addSpacing(6)
-            for _key, label, vis in self._traces:
+            for i, (_key, label, vis) in enumerate(self._traces):
                 cb = QCheckBox(label)
                 cb.setChecked(vis)
+                cb.setStyleSheet(f"color: {_PEN_COLORS[i % len(_PEN_COLORS)]};")
                 header.addWidget(cb)
                 self._trace_cb.append(cb)
         header.addStretch(1)
@@ -83,13 +90,15 @@ class TimePlot(QWidget):
         root.addWidget(self._pw, 1)
 
         pi = self._pw.getPlotItem()
-        multi = len(self._traces) > 1
-        if multi:
-            pi.addLegend(offset=(-10, 10))
+        # No pyqtgraph legend: its samples are clickable and would duplicate /
+        # desync from our per-trace checkboxes, which now carry the color key.
+        # Also hide pyqtgraph's built-in auto-range "A" button (bottom-left): it
+        # conflicts with our "auto Y" checkbox and the rolling X window.
+        pi.hideButtons()
         self._curves = []
         for i, (key, label, _vis) in enumerate(self._traces):
             pen = _PENS[i % len(_PENS)]
-            curve = self._pw.plot(pen=pen, name=(label if multi else None))
+            curve = self._pw.plot(pen=pen, name=None)
             self._curves.append((key, label, curve))
 
         # Wire per-trace checkboxes now that curves exist (index-aligned) and

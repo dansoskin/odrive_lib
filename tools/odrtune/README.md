@@ -1,23 +1,30 @@
 # odrtune
 
-USB debugging and tuning GUI for ODrive Pro/S1 (firmware 0.6.x). Independent of
-the CAN C library in this repo.
+**Standalone USB debugging and tuning GUI for ODrive** (Pro / S1, firmware
+0.6.x). PySide6 + pyqtgraph, talking to the drive over USB via the official
+`odrive` Python package. (The CAN control **C library** for embedding in
+firmware is a separate project:
+[odrive_lib](https://github.com/dansoskin/odrive_lib).)
+
+If you've never tuned an ODrive: jump to **[Tuning process](#tuning-process)**
+below — the same walkthrough is in the app's collapsible *Tuning guide*.
 
 ## Install
 ```bash
-cd tools/odrtune
-python -m pip install -r requirements.txt
+python -m pip install -r requirements.txt   # PySide6, pyqtgraph, odrive
 ```
 
 ## Run
 ```bash
-cd tools/odrtune
-python __main__.py        # or, from the repo root: python tools/odrtune
+python __main__.py        # or:  python -m __main__   from this folder
 ```
-Click **Connect** (ODrive plugged in over USB); the button then becomes
-**Disconnect** (releases the USB handle and disables the tabs — it does *not*
-disarm the motor, so anything you left running keeps running; click **Connect**
-again to reattach). The **top bar** holds the connect
+
+Pick the target ODrive with the **Serial** chooser (blank = first available;
+**Scan** lists connected serials). To drive **two ODrives at once**, launch the
+app twice and pick a different serial in each. Click **Connect**; the button
+becomes **Disconnect** (releases the USB handle and disables the tabs — it does
+*not* disarm the motor; click **Connect** again to reattach). The **top bar**
+holds the connect
 controls, a live **driver state + result + error** readout (a **Result:** line
 shows the axis `procedure_result` decoded to a name — e.g. a closed-loop request
 on an uncalibrated axis stays in `Idle` and shows `Result: NOT_CALIBRATED`,
@@ -137,9 +144,10 @@ unchecking hides that trace and drops it from the latest-value readout. Each
 checkbox label is colored to match its trace's line, so the checkboxes double as
 the color key (there is no separate clickable plot legend).
 
-Note on the Position graph: it plots the **absolute** position (`pos_abs`) — the
-frame the controller and `input_pos`/`Set current position` operate in — so
-homing/zeroing is reflected on the graph.
+Note on the Position graph: "actual" is the first finite of
+`axis.pos_estimate` → `pos_vel_mapper.pos_abs` → `pos_rel`, so it always shows a
+real number (a plain incremental axis reads relative-to-boot; `pos_abs` is used
+once the axis has a valid absolute reference / is homed).
 
 Tuning changes are applied **live in RAM**; use **Config → Save to NVM** to keep
 them across power cycles.
@@ -149,11 +157,83 @@ they stay aligned when you pan/zoom or change the window span.
 
 ## Layout
 ```
-tools/odrtune/
-  __main__.py   # entry point (launches the Qt app)
-  core/         # Qt-free ODrive logic (device, config_io, sampler,
-                #   calibration, step_response)
-  ui/           # PySide6 panels + main window
+__main__.py   # entry point (launches the Qt app)
+core/         # Qt-free ODrive logic (device, config_io, sampler, capture)
+ui/           # PySide6 panels + main window
 ```
 `core/` isolates all firmware-specific ODrive attribute paths in `core/device.py`,
-so a firmware tweak touches one file.
+so a firmware tweak touches one file. Calibration is run from the Control
+panel's requested-state dropdown ("Full calibration").
+
+## Tuning process
+
+The same guide is in the app (collapsible **Tuning guide** at the top of the
+Tuning tab). Tune **from the inside out** — each inner loop must be solid before
+the outer one:
+
+> feedback → current → velocity → position → then feedforward / shaping.
+
+The motor **will move** during tuning — keep it free to spin and keep the
+top-bar **Disarm (IDLE)** within reach.
+
+**Which tool does what**
+- **Control panel** (left, always visible) — command the motor: mode, setpoint,
+  and the **Back-and-forth** sequence (A↔B) that drives repeated steps in the
+  input mode you configured. Set **Passthrough** here for clean step responses.
+- **Tuning tab** (middle) — every loop parameter, grouped inner-to-outer, with
+  live read-back verification.
+- **Capture tab** (middle) — 8 kHz onboard-scope capture; the only tool fast
+  enough to see the current loop.
+- **Right-hand graphs** — actual vs target vs ideal; use **Pause** to inspect a
+  step. *ideal* is what the controller commands each instant; *actual* should
+  track it with minimal lag and no ringing.
+
+**0. Prerequisites.** Run **Full calibration** (Control → requested state). You
+need valid phase R/L, flux linkage and encoder offset; confirm the top bar
+shows `Result: SUCCESS` (use **Clear errors** if needed). Set safe limits:
+`current_soft_max`/`current_hard_max`, `vel_limit`, and a correct
+`torque_constant` (≈ 8.27 / KV).
+
+**1. Feedback — `encoder_bandwidth`.** Match your encoder: high-resolution
+encoders tolerate high values; hall sensors need low (~10–100). It filters the
+estimate and *caps* how high the loop gains can go, so set it first.
+
+**2. Current (torque) loop.** You do **not** hand-tune the current PI gains —
+ODrive derives them from `current_control_bandwidth` + phase R/L (default
+~1000 is fine). **Verify** in the Capture tab (*Current loop (Iq)* preset + a
+small torque step): `Iq_measured` should track `Iq_setpoint` with a fast rise,
+little overshoot, no ringing. Raise the bandwidth only gradually and only if
+R/L are trustworthy, re-capturing each time; stop at the first
+overshoot/ringing/noise.
+
+**3. Velocity loop.** Control mode **Velocity**, input mode **Passthrough**.
+Set `vel_integrator_gain = 0`; raise `vel_gain` ~30%/step until you hear whine /
+see vibration, then back off to ~half. Then raise `vel_integrator_gain` (start
+near `vel_gain`) until a step is slightly underdamped, then halve it. Drive
+steps with the Control-panel **Back-and-forth** sequence and compare actual vs
+ideal.
+
+**4. Position loop.** Sequence → Position. Raise `pos_gain` until a step just
+begins to overshoot/ring, then back off until it stops. (Position loop is
+P-only; its output is a velocity command clamped by `vel_limit`.)
+
+**5. Feedforward & shaping (last).** `inertia` (accel FF) for fast moves;
+current feedforward (`wL`/`bEMF`/`dI_dt`) for high-speed current tracking;
+command shaping (ramp / trajectory / filter) in the Control tab; gain
+scheduling if high gains buzz at standstill.
+
+**Diagnosis.** If the response lags, first rule out an active limit (current,
+torque, bus, velocity, modulation) before raising gains. Buzzing: find the cause
+(too-high gains, encoder noise, mechanical resonance, commutation error,
+current-loop instability) — lower encoder bandwidth only if estimator noise is
+it. A rejected closed-loop request stays in `Idle` with e.g.
+`Result: NOT_CALIBRATED`.
+
+**Finish.** Changes are live in RAM. **Disarm**, then **Config → Save to NVM**
+(the drive reboots and disconnects — reconnect to verify).
+
+> Verification note: this app has been developed and tested headless (against a
+> simulated ODrive tree); the exact firmware attribute paths and the starting
+> values above are ODrive's conventional rules of thumb — confirm against your
+> hardware and firmware.
+

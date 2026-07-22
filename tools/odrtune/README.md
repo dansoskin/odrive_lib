@@ -18,8 +18,11 @@ Click **Connect** (ODrive plugged in over USB); the button then becomes
 **Disconnect** (releases the USB handle and disables the tabs — it does *not*
 disarm the motor, so anything you left running keeps running; click **Connect**
 again to reattach). The **top bar** holds the connect
-controls, a live **driver state + error** readout (the error shows both the raw
-hex bitfield and decoded names, e.g. `0x1000 (CURRENT_LIMIT_VIOLATION)`; the
+controls, a live **driver state + result + error** readout (a **Result:** line
+shows the axis `procedure_result` decoded to a name — e.g. a closed-loop request
+on an uncalibrated axis stays in `Idle` and shows `Result: NOT_CALIBRATED`,
+highlighted when it is anything other than `SUCCESS`; the error shows both the
+raw hex bitfield and decoded names, e.g. `0x1000 (CURRENT_LIMIT_VIOLATION)`; the
 decode table targets fw 0.6.x and appends a warning if the connected firmware's
 major.minor differs), a **Disarm (IDLE)** button (software disarm — requests
 IDLE; this is *not* a hardware emergency stop, and a physical safety circuit is
@@ -119,7 +122,9 @@ time and value for measurement), and a **–/+** minimize button that collapses 
 graph to just its header (latest value still visible) so it takes no space.
 Multi-trace graphs additionally show one small **per-trace checkbox** (e.g.
 `actual` / `target` / `ideal`) next to the title, checked by default —
-unchecking hides that trace and drops it from the latest-value readout.
+unchecking hides that trace and drops it from the latest-value readout. Each
+checkbox label is colored to match its trace's line, so the checkboxes double as
+the color key (there is no separate clickable plot legend).
 
 Note on the Position graph: it plots the **absolute** position (`pos_abs`) — the
 frame the controller and `input_pos`/`Set current position` operate in — so

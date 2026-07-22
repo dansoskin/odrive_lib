@@ -52,6 +52,8 @@ class MainWindow(QMainWindow):
         # Live driver status + emergency stop (visible on every tab).
         status = QVBoxLayout()
         self._state_lbl = QLabel("State: —")
+        self._result_lbl = QLabel("Result: —")
+        self._result_lbl.setWordWrap(True)
         self._err_lbl = QLabel("Error: —")
         self._err_lbl.setWordWrap(True)
         self._estop_btn = QPushButton("Disarm (IDLE)")
@@ -63,6 +65,7 @@ class MainWindow(QMainWindow):
         self._estop_btn.setEnabled(False)
         self._estop_btn.clicked.connect(self._estop)
         status.addWidget(self._state_lbl)
+        status.addWidget(self._result_lbl)
         status.addWidget(self._err_lbl)
         status.addWidget(self._estop_btn)
         top.addLayout(status, 0)
@@ -147,6 +150,8 @@ class MainWindow(QMainWindow):
         self._estop_btn.setEnabled(False)
         self.setWindowTitle("odrtune")
         self._state_lbl.setText("State: —")
+        self._result_lbl.setText("Result: —")
+        self._result_lbl.setStyleSheet("")
         self._err_lbl.setText("Error: —")
         for p in self._device_listeners:
             p.set_device(None)
@@ -174,6 +179,14 @@ class MainWindow(QMainWindow):
         try:
             self._state_lbl.setText(
                 f"State: {device_mod.state_name(self._device.current_state())}")
+            # Surface procedure_result: a rejected closed-loop request (e.g. on
+            # an uncalibrated axis) stays in IDLE but sets a nonzero result such
+            # as NOT_CALIBRATED. Highlight anything other than SUCCESS (0).
+            pr = self._device.procedure_result()
+            self._result_lbl.setText(
+                f"Result: {device_mod.procedure_result_name(pr)}")
+            self._result_lbl.setStyleSheet(
+                "color:#ff8a65;" if pr else "")
             err = self._device.errors()
             active, disarm = err.get("active_errors", 0), err.get("disarm_reason", 0)
             if active or disarm:

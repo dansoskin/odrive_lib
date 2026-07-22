@@ -37,11 +37,42 @@ CONTROL_MODES = {
 
 
 def state_name(value: int) -> str:
-    """Human-readable name for an AxisState int."""
+    """Human-readable name for an AxisState int.
+
+    Prefers our friendly names for the states we map in AXIS_STATES; for any
+    other value, decode via the installed odrive package's authoritative enum
+    (guarded) so uncommon states still show a name instead of a bare int."""
     for name, v in AXIS_STATES.items():
         if v == value:
             return name
-    return str(value)
+    try:
+        from odrive.enums import AxisState as _AS
+        return _AS(value).name
+    except Exception:  # noqa: BLE001 - enum missing or value unknown
+        return str(value)
+
+
+# Axis.procedure_result decode. Prefer the installed odrive package's
+# authoritative enum; fall back to a static table for this firmware line.
+try:
+    from odrive.enums import ProcedureResult as _PR
+    PROCEDURE_RESULTS = {int(v): v.name for v in _PR}
+except Exception:  # noqa: BLE001
+    PROCEDURE_RESULTS = {0: "SUCCESS", 1: "BUSY", 2: "CANCELLED", 3: "DISARMED",
+        4: "NO_RESPONSE", 5: "POLE_PAIR_CPR_MISMATCH", 6: "PHASE_RESISTANCE_OUT_OF_RANGE",
+        7: "PHASE_INDUCTANCE_OUT_OF_RANGE", 8: "UNBALANCED_PHASES", 9: "INVALID_MOTOR_TYPE",
+        10: "ILLEGAL_HALL_STATE", 11: "TIMEOUT", 12: "HOMING_WITHOUT_ENDSTOP",
+        13: "INVALID_STATE", 14: "NOT_CALIBRATED", 15: "NOT_CONVERGING",
+        16: "REQUESTED_CURRENT_TOO_HIGH"}
+
+
+def procedure_result_name(value) -> str:
+    """Human-readable name for an Axis.procedure_result int (falls back to
+    str(value) for values not in the decode table)."""
+    try:
+        return PROCEDURE_RESULTS[int(value)]
+    except Exception:  # noqa: BLE001 - unknown / undecodable value
+        return str(value)
 
 
 # ODriveError bitmask (used by axis.active_errors and axis.disarm_reason).
@@ -452,17 +483,61 @@ class Device:
     def disconnect(self) -> None:
         """Best-effort release of the USB handle.
 
-        There is no public close API in the odrive/fibre package for this
-        version, so we just try `self._raw.__channel__.serial_device.close()`
-        inside try/except and otherwise simply drop our reference to the raw
-        object. Does NOT disarm the motor: the user may intentionally leave the
-        axis running after disconnecting."""
-        try:
-            self._raw.__channel__.serial_device.close()
-        except Exception:  # noqa: BLE001 - no public close API; best effort only
-            pass
+        ``odrive.find_any()`` returns a ``SyncObject`` whose ``._dev`` is a
+        ``RuntimeDevice`` and whose ``._loop`` is the event loop the device
+        manager runs on (usually a background thread). We release through the
+        real device-manager APIs, most specific first:
+
+        1. ``DeviceManager.release_connection(runtime_device)`` -- decrements
+           the connection ref count and, at zero, disconnects and drops the
+           libodrive device (frees the USB handle). Run on the manager's loop
+           for thread safety.
+        2. ``close_device_manager()`` -- broader fallback that tears the whole
+           manager (and its background thread) down.
+
+        Each step is guarded; failures are logged at debug level and the next
+        step is tried. Does NOT disarm the motor: the user may intentionally
+        leave the axis running after disconnecting."""
+        raw = self._raw
         self._raw = None
         self._axis = None
+        if raw is None:
+            return
+
+        runtime = getattr(raw, "_dev", None)
+        loop = getattr(raw, "_loop", None)
+        released = False
+
+        # Only touch the device manager for a genuine find_any() SyncObject
+        # (has both ._dev and ._loop); a duck-typed fake is just dropped.
+        if runtime is not None and loop is not None:
+            try:
+                import asyncio
+                from odrive.device_manager import get_device_manager
+                dm = get_device_manager()
+
+                async def _release():
+                    dm.release_connection(runtime)
+
+                asyncio.run_coroutine_threadsafe(_release(), loop).result(timeout=5)
+                released = True
+                _log.info("disconnect: released via "
+                          "DeviceManager.release_connection()")
+            except Exception as e:  # noqa: BLE001 - try broader release next
+                _log.debug("disconnect: release_connection failed: %s", e)
+
+            if not released:
+                try:
+                    from odrive.device_manager import close_device_manager
+                    close_device_manager()
+                    released = True
+                    _log.info("disconnect: released via close_device_manager()")
+                except Exception as e:  # noqa: BLE001
+                    _log.debug("disconnect: close_device_manager failed: %s", e)
+
+        if not released:
+            _log.debug("disconnect: no device-manager release path taken; "
+                       "dropped raw reference only")
 
     @property
     def raw(self):

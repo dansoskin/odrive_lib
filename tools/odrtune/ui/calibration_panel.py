@@ -5,6 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QLabel)
 
+from core import device as device_mod
 from core.calibration import CalibrationRunner
 
 
@@ -60,4 +61,9 @@ class CalibrationPanel(QWidget):
         if result == "success":
             self._status.setText("Calibration succeeded.")
         else:
-            self._status.setText(f"Calibration failed: {self._runner.last_error}")
+            info = dict(self._runner.last_error or {})
+            pr = info.get("procedure_result")
+            if pr is not None:
+                info["procedure_result"] = (
+                    f"{device_mod.procedure_result_name(pr)} ({pr})")
+            self._status.setText(f"Calibration failed: {info}")

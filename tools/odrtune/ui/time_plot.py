@@ -152,8 +152,8 @@ class TimePlot(QWidget):
             curve.setData(t, data)   # keep hidden curves fed so re-checking is up to date
             visible = self._trace_cb[i].isChecked() if self._trace_cb else True
             if data and visible:
-                parts.append(f"{label} {data[-1]:.4g}" if multi
-                             else f"{data[-1]:.4g}")
+                parts.append(f"{label} {data[-1]:.3f}" if multi
+                             else f"{data[-1]:.3f}")
         self._latest.setText("   ".join(parts))
 
     # --- header actions ---

@@ -495,8 +495,31 @@ class Device:
         return caps
 
     # --- persistence ---
+    def is_idle(self) -> bool:
+        try:
+            return self._axis.current_state == IDLE
+        except Exception:  # noqa: BLE001
+            return False
+
     def save(self) -> None:
-        self._raw.save_configuration()
+        """Persist the live config to NVM.
+
+        fw 0.6.x requires the axis to be **IDLE** to save, and
+        ``save_configuration()`` writes flash and then **reboots** the ODrive —
+        so the USB link drops mid-call and the sync call raises a
+        lost-connection error. That error is the *expected success* path (the
+        firmware already wrote flash before rebooting), so we swallow it. The
+        caller must treat the device as gone afterwards (reconnect to verify).
+
+        We request IDLE first defensively; callers should still gate on
+        :meth:`is_idle` and warn the user, because saving while armed is
+        refused by the firmware."""
+        self._axis.requested_state = IDLE
+        try:
+            self._raw.save_configuration()
+        except Exception:  # noqa: BLE001 - reboot drops the link on success
+            _log.debug("save_configuration raised (expected on reboot)",
+                       exc_info=True)
 
     def erase(self) -> None:
         self._raw.erase_configuration()

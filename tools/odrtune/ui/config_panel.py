@@ -222,9 +222,23 @@ class ConfigPanel(QWidget):
     def _save(self):
         if self._dev is None:
             return
-        save_to_nvm(self._dev)
-        self._status.setText("Saved to NVM.")
+        # fw 0.6.x refuses to save unless the axis is IDLE, and saving reboots
+        # the device. Gate on IDLE (clear guidance) and tear down afterwards.
+        if not self._dev.is_idle():
+            self._status.setText(
+                "Save to NVM needs the axis in IDLE — Disarm (top bar) first.")
+            self._status.setStyleSheet("color: red;")
+            return
+        self._status.setText("Saving to NVM… device will reboot & disconnect.")
         self._status.setStyleSheet("")
+        try:
+            save_to_nvm(self._dev)      # writes flash, then the ODrive reboots
+        except Exception as exc:  # noqa: BLE001
+            self._status.setText(f"Save failed: {exc}")
+            self._status.setStyleSheet("color: red;")
+            return
+        # The device rebooted out from under us — release + reset like a reboot.
+        self.rebooted.emit()
 
     def _reboot(self):
         if self._dev is None:

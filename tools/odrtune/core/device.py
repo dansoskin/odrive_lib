@@ -188,16 +188,73 @@ def _fmt(x) -> str:
     return str(x)
 
 
-def connect(timeout: float = 15.0):
-    """Find and return the first ODrive over USB. Raises on timeout."""
+def connect(serial: str | None = None, timeout: float = 15.0):
+    """Find and return an ODrive over USB, wrapped in a Device.
+
+    With no serial, grabs the first available device. With a serial (hex string
+    as shown by serial_hex(), with or without a leading '0x'), connects to that
+    specific device — the deterministic way to point two app instances at two
+    different ODrives. Raises on timeout."""
     import odrive
+    if serial:
+        return Device(odrive.find_any(serial_number=_norm_serial(serial),
+                                      timeout=timeout))
     return Device(odrive.find_any(timeout=timeout))
 
 
-def scan(timeout: float = 5.0):
-    """Return a list of Device wrappers for all ODrives found."""
-    import odrive
-    return [Device(d) for d in odrive.find_all(timeout=timeout)]
+def _norm_serial(serial: str) -> str:
+    """Normalize a user-entered serial to the form the odrive package matches
+    (uppercase hex, no '0x')."""
+    s = serial.strip()
+    if s.lower().startswith("0x"):
+        s = s[2:]
+    return s.upper()
+
+
+def list_serials(timeout: float = 2.0) -> list[str]:
+    """Best-effort list of connected ODrive serials (hex, no '0x') WITHOUT
+    claiming them, via the device manager's passive discovery subscription.
+
+    Fully guarded: returns [] if the odrive package internals differ or nothing
+    is found. Connecting by a specific serial (see connect()) is the reliable
+    path; this just populates the chooser. NOTE: unverified on hardware."""
+    import asyncio
+    try:
+        from odrive.device_manager import (get_device_manager,
+                                            DeviceManagerDelegate, FilterSpec)
+    except Exception:  # noqa: BLE001 - package layout differs
+        return []
+    found: dict[str, bool] = {}
+
+    class _Collector(DeviceManagerDelegate):
+        def on_found_device(self, dev):  # noqa: D401
+            try:
+                found[str(dev.info.serial_number)] = True
+            except Exception:  # noqa: BLE001
+                pass
+            return False  # passive: never connect
+
+    try:
+        dm = get_device_manager()
+        loop = dm._loop
+
+        async def _run():
+            try:
+                interfaces = list(dm.default_interfaces)
+            except Exception:  # noqa: BLE001
+                interfaces = None
+            sub = dm.subscribe(FilterSpec(interfaces=interfaces),
+                               _Collector(), passive=True)
+            try:
+                await asyncio.sleep(timeout)
+            finally:
+                dm.unsubscribe(sub)
+
+        asyncio.run_coroutine_threadsafe(_run(), loop).result(timeout + 5)
+    except Exception:  # noqa: BLE001 - degrade to manual serial entry
+        _log.debug("list_serials failed", exc_info=True)
+        return []
+    return sorted(_norm_serial(s) for s in found)
 
 
 class Device:

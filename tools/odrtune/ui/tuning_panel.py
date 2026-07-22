@@ -24,6 +24,9 @@ from core import device as device_mod
 _F = "f"
 _B = "b"
 
+# Appended to a parameter's tooltip when the connected firmware lacks it.
+_NA_SUFFIX = " — n/a on this firmware"
+
 
 @dataclass
 class FloatSpec:
@@ -506,6 +509,12 @@ class TuningPanel(QWidget):
         for key, (kind, w) in self._widgets.items():
             present = key in values
             w.setEnabled(present)          # grey out params this fw lacks
+            # Rebuild the tooltip from _TIPS each time (never append twice) and
+            # flag params this firmware doesn't expose.
+            tip = _TIPS.get(key, "")
+            if not present:
+                tip = (tip + _NA_SUFFIX) if tip else _NA_SUFFIX.strip()
+            w.setToolTip(tip)
             inf = self._inf_btns.get(key)
             if inf is not None:
                 inf.setEnabled(present)

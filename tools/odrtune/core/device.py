@@ -157,6 +157,7 @@ class Device:
     def __init__(self, raw, axis_index: int = 0):
         self._raw = raw
         self._axis = getattr(raw, f"axis{axis_index}")
+        self._caps = None  # capability map, probed once on first request
 
     # --- identity ---
     def fw_version(self) -> tuple[int, int, int]:
@@ -412,6 +413,30 @@ class Device:
                 results[key] = (False, msg)
                 _log.warning("set_tuning: %s %s", key, msg)
         return results
+
+    def capabilities(self) -> dict:
+        """Map every tuning/motion/diagnostic key to whether this firmware
+        exposes it. Probed once and cached for the life of the connection
+        (a Device is per-connection, so the map never needs invalidating).
+
+        A tuning key is capable when it appears in ``get_tuning()`` (absent
+        attributes are omitted there); motion and diagnostic keys are capable
+        when their guarded read returns a non-NaN value."""
+        if self._caps is not None:
+            return self._caps
+        caps: dict = {}
+        present = self.get_tuning()
+        for key in self._tuning_targets():
+            caps[key] = key in present
+        try:
+            for key, val in self.get_motion_config().items():
+                caps[key] = not (isinstance(val, float) and math.isnan(val))
+        except Exception:  # noqa: BLE001
+            pass
+        for key, val in self.diagnostics().items():
+            caps[key] = not (isinstance(val, float) and math.isnan(val))
+        self._caps = caps
+        return caps
 
     # --- persistence ---
     def save(self) -> None:

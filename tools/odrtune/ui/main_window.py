@@ -116,6 +116,13 @@ class MainWindow(QMainWindow):
         self._t0 = time.monotonic()
         self._tick_n = 0
         self._estop_btn.setEnabled(True)
+        # Window title carries the connected device's identity.
+        try:
+            maj, minr, rev = dev.fw_version()
+            self.setWindowTitle(
+                f"odrtune — {dev.serial_hex()} fw {maj}.{minr}.{rev}")
+        except Exception:  # noqa: BLE001 - identity is cosmetic
+            self.setWindowTitle("odrtune")
         for p in self._device_listeners:
             p.set_device(dev)
         self._timer.start()
@@ -132,6 +139,7 @@ class MainWindow(QMainWindow):
         self._device = None
         self._sampler = None
         self._estop_btn.setEnabled(False)
+        self.setWindowTitle("odrtune")
         self._state_lbl.setText("State: —")
         self._err_lbl.setText("Error: —")
         for p in self._device_listeners:

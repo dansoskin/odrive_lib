@@ -61,7 +61,11 @@ Left-hand tabs:
   group — an input-mode selector
   (Passthrough / Velocity ramp / Position filter / Trajectory / Torque ramp)
   with the ramp/acceleration fields relevant to the chosen mode (velocity ramp
-  rate, trajectory vel/accel/decel limits, filter bandwidth, torque ramp rate).
+  rate, trajectory vel/accel/decel limits, filter bandwidth, torque ramp rate);
+  and a **Back-and-forth** sequence (points A/B + dwell) that drives the motor
+  in the *currently configured input mode* — unlike the Tuning-tab sequence
+  (which forces Passthrough for clean steps), this one honors your ramp /
+  trajectory / filter so you can inspect the shaped motion on the graphs.
 - **Calibration** — run the full motor+encoder calibration and see the result.
 - **Tuning** — adjust the key control-loop parameters independently, grouped
   inner-to-outer (scrollable): a **Diagnostics** readout at the top (live
@@ -80,7 +84,10 @@ Left-hand tabs:
   affect control). Plus a
   **back-and-forth sequence** (drive the motor between points A and B at a set
   dwell) so you can watch the repeated step on the right-hand graphs while you
-  adjust gains. Tune inner-to-outer: feedback → current (+FF) → velocity →
+  adjust gains — this one **forces Passthrough** for clean step responses (the
+  Control-tab sequence keeps your input mode instead). A collapsible **Tuning
+  guide** at the top gives a full inside-out walkthrough. Tune inner-to-outer:
+  feedback → current (+FF) → velocity →
   position. Parameters your firmware doesn't expose are shown disabled. Edits are
   debounced and every write is **verified by read-back** (a status line shows
   `key ✓` or the read-back mismatch, and the field reverts on failure); a few

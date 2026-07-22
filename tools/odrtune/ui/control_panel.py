@@ -151,6 +151,43 @@ class ControlPanel(QWidget):
         self._ramp_form.addRow(self._ramp_status)
         root.addWidget(mgroup)
 
+        # --- back-and-forth sequence (honors the input mode above) ---
+        # Unlike the Tuning-tab sequence (which forces Passthrough for clean
+        # steps), this one leaves input_mode alone, so you can watch the motor
+        # move under the ramp / trajectory / filter you configured above.
+        seq = QGroupBox("Back-and-forth (uses the input mode above)")
+        seq_form = QFormLayout(seq)
+        self._cseq_a = QDoubleSpinBox()
+        self._cseq_a.setRange(-1e9, 1e9)
+        self._cseq_a.setDecimals(3)
+        self._cseq_a.setSuffix(" units")
+        self._cseq_b = QDoubleSpinBox()
+        self._cseq_b.setRange(-1e9, 1e9)
+        self._cseq_b.setDecimals(3)
+        self._cseq_b.setSuffix(" units")
+        self._cseq_b.setValue(1.0)
+        self._cseq_dwell = QDoubleSpinBox()
+        self._cseq_dwell.setRange(0.05, 3600.0)
+        self._cseq_dwell.setDecimals(2)
+        self._cseq_dwell.setValue(1.0)
+        self._cseq_dwell.setSuffix(" s")
+        self._cseq_btn = QPushButton("Start")
+        self._cseq_btn.setCheckable(True)
+        self._cseq_btn.setToolTip(
+            "Drive the motor back and forth between A and B (in the current "
+            "control mode + conversion units), using the configured input mode "
+            "so you can inspect ramped/trajectory motion. Arms closed loop on "
+            "start; Stop holds/zeroes and stays armed.")
+        seq_form.addRow("Point A:", self._cseq_a)
+        seq_form.addRow("Point B:", self._cseq_b)
+        seq_form.addRow("Dwell:", self._cseq_dwell)
+        seq_form.addRow("", self._cseq_btn)
+        root.addWidget(seq)
+
+        self._cseq_i = 0
+        self._cseq_timer = QTimer(self)
+        self._cseq_timer.timeout.connect(self._cseq_tick)
+
         btns = QHBoxLayout()
         self._arm = QPushButton("Arm (closed loop)")
         self._idle = QPushButton("Idle")
@@ -171,6 +208,8 @@ class ControlPanel(QWidget):
         self._idle.clicked.connect(self._on_idle)
         self._stop.clicked.connect(self._on_stop)
         self._conv.valueChanged.connect(self._on_conv_changed)
+        self._cseq_btn.toggled.connect(self._toggle_cseq)
+        self._cseq_dwell.valueChanged.connect(self._cseq_retime)
 
     # --- device lifecycle ---
     def set_device(self, dev):
@@ -179,6 +218,7 @@ class ControlPanel(QWidget):
         self._ramp_debounce.stop()
         self._ramp_status.setText("")
         self._ramp_status.setStyleSheet("")
+        self._cseq_cancel()                # stop any running back-and-forth
         if dev is None:                    # disconnected: disable all controls
             self._set_enabled(False)
             return
@@ -260,11 +300,17 @@ class ControlPanel(QWidget):
             self._ramp_form.setRowVisible(spin, key in active)
 
     def _send_setpoint(self):
+        self._send_value(self._setpoint.value())
+
+    def _send_value(self, value):
+        """Send one setpoint in the current control mode, applying the
+        conversion factor (position/velocity) as user-units -> motor revs;
+        torque is raw Nm. Does NOT touch input_mode, so whatever motion shaping
+        is configured (ramp / trajectory / filter / passthrough) applies."""
         if self._dev is None:
             return
         mode = self._mode.currentData()
-        value = self._setpoint.value()
-        rev = value * self._factor()   # user units -> motor revolutions
+        rev = value * self._factor()
         if mode == device_mod.CONTROL_MODE_POSITION:
             self._guard(lambda: self._dev.set_input_pos(rev))
         elif mode == device_mod.CONTROL_MODE_VELOCITY:
@@ -289,11 +335,49 @@ class ControlPanel(QWidget):
         cfg["conversion"] = self._conv.value()
         settings.save(cfg)
 
+    def _toggle_cseq(self, on: bool):
+        if self._dev is None:
+            self._cseq_btn.setChecked(False)
+            return
+        if on:
+            # Ensure the control mode matches; leave input_mode as configured.
+            self._guard(lambda: self._dev.set_control_mode(self._mode.currentData()))
+            self._cseq_i = 0
+            self._send_value(self._cseq_a.value())      # go to A first
+            self._guard(lambda: self._dev.set_closed_loop(True))
+            self._cseq_timer.start(max(50, int(self._cseq_dwell.value() * 1000)))
+            self._cseq_btn.setText("Stop")
+        else:
+            self._cseq_timer.stop()
+            self._cseq_btn.setText("Start")
+            self._on_stop()          # mode-appropriate safe stop, stays armed
+
+    def _cseq_tick(self):
+        self._cseq_i ^= 1
+        self._send_value(self._cseq_b.value() if self._cseq_i
+                         else self._cseq_a.value())
+
+    def _cseq_retime(self):
+        if self._cseq_timer.isActive():
+            self._cseq_timer.setInterval(
+                max(50, int(self._cseq_dwell.value() * 1000)))
+
+    def _cseq_cancel(self):
+        """Quietly stop the sequence without a safe-stop or recursion (used when
+        Idle / Stop / disconnect intervene and will handle the axis themselves)."""
+        self._cseq_timer.stop()
+        if self._cseq_btn.isChecked():
+            self._cseq_btn.blockSignals(True)
+            self._cseq_btn.setChecked(False)
+            self._cseq_btn.blockSignals(False)
+        self._cseq_btn.setText("Start")
+
     def _on_arm(self):
         self._guard(lambda: self._dev.set_closed_loop(True))
         self._sync_combo(self._req, device_mod.CLOSED_LOOP_CONTROL)
 
     def _on_idle(self):
+        self._cseq_cancel()          # don't keep commanding setpoints into IDLE
         self._guard(lambda: self._dev.set_closed_loop(False))
         self._sync_combo(self._req, device_mod.IDLE)
 
@@ -308,6 +392,7 @@ class ControlPanel(QWidget):
         position mode raced the motor to position 0.)"""
         if self._dev is None:
             return
+        self._cseq_cancel()          # a manual stop also ends the sequence
         mode = self._mode.currentData()
         if mode == device_mod.CONTROL_MODE_POSITION:
             self._guard(
@@ -321,13 +406,16 @@ class ControlPanel(QWidget):
     def _update_units(self):
         for label, value, unit in _MODES:
             if value == self._mode.currentData():
-                self._setpoint.setSuffix(f" {unit}")
+                suffix = f" {unit}"
+                for w in (self._setpoint, self._cseq_a, self._cseq_b):
+                    w.setSuffix(suffix)
                 return
 
     def _set_enabled(self, on: bool):
         widgets = [self._req, self._mode, self._setpoint, self._send, self._live,
                    self._abspos, self._set_abs, self._imode, self._arm,
-                   self._idle, self._stop]
+                   self._idle, self._stop,
+                   self._cseq_a, self._cseq_b, self._cseq_dwell, self._cseq_btn]
         widgets += list(self._ramp_rows.values())
         for w in widgets:
             w.setEnabled(on)

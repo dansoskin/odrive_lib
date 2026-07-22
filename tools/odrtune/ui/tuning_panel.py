@@ -14,10 +14,73 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
                                QGroupBox, QLabel, QPushButton, QToolButton,
-                               QDoubleSpinBox, QCheckBox, QScrollArea)
+                               QLineEdit, QCheckBox, QScrollArea)
+
+
+def _fmt_num(v) -> str:
+    """Compact but precise text for a float field (trims trailing zeros,
+    keeps small values like 2e-05 readable)."""
+    try:
+        return f"{float(v):.10g}"
+    except (TypeError, ValueError):
+        return str(v)
+
+
+class FloatEdit(QLineEdit):
+    """A free-text numeric field that stands in for QDoubleSpinBox: type any
+    number (no step arrows, no fixed decimals). Exposes value()/setValue() and a
+    valueChanged(float) signal so the panel's debounce / read-back / ∞ / Apply
+    wiring is unchanged. Invalid text reverts to the last valid value on commit;
+    the value is clamped to [minv, maxv] on editing-finished. The unit is shown
+    in the row label, not the field."""
+
+    valueChanged = Signal(float)
+
+    def __init__(self, minv, maxv, parent=None):
+        super().__init__(parent)
+        self._min = minv
+        self._max = maxv
+        self._value = 0.0
+        self.textEdited.connect(self._on_text_edited)
+        self.editingFinished.connect(self._reformat)
+
+    def _parse(self):
+        try:
+            return float(self.text().strip())
+        except ValueError:
+            return None
+
+    def _on_text_edited(self, _t):
+        v = self._parse()
+        if v is not None:                 # emit only on a parseable value
+            self._value = v
+            self.valueChanged.emit(v)
+
+    def _reformat(self):
+        v = self._parse()
+        if v is None:
+            v = self._value              # revert to last valid
+        v = max(self._min, min(self._max, v))
+        self._value = v
+        self._set_text(v)
+
+    def value(self) -> float:
+        return self._value
+
+    def setValue(self, v):
+        try:
+            self._value = float(v)
+        except (TypeError, ValueError):
+            return
+        self._set_text(self._value)
+
+    def _set_text(self, v):
+        self.blockSignals(True)
+        self.setText(_fmt_num(v))
+        self.blockSignals(False)
 
 from core import device as device_mod
 
@@ -471,15 +534,14 @@ class TuningPanel(QWidget):
                 tip = _TIPS.get(spec.key, "")
                 if spec.kind == _F:
                     key = spec.key
-                    w = QDoubleSpinBox()
-                    w.setDecimals(spec.decimals)
-                    w.setRange(spec.minv, spec.maxv)
-                    w.setSuffix(spec.suffix)
+                    w = FloatEdit(spec.minv, spec.maxv)
                     w.setToolTip(tip)
-                    lbl = QLabel(spec.label + ":")
+                    unit = spec.suffix.strip()
+                    lbl = QLabel(f"{spec.label} ({unit}):" if unit
+                                 else f"{spec.label}:")
                     lbl.setToolTip(tip)
                     self._widgets[key] = (_F, w)
-                    # Row = spinbox [+ inf toggle] [+ Apply].
+                    # Row = text field [+ inf toggle] [+ Apply].
                     row = QHBoxLayout()
                     row.setContentsMargins(0, 0, 0, 0)
                     row.addWidget(w, 1)
@@ -508,7 +570,8 @@ class TuningPanel(QWidget):
                     else:
                         w.valueChanged.connect(
                             lambda _v, k=key: self._queue(k))
-                        w.editingFinished.connect(self._flush_now)
+                        w.editingFinished.connect(
+                            lambda k=key: self._commit(k))
                     form.addRow(lbl, row)
                 else:
                     key = spec.key
@@ -628,6 +691,12 @@ class TuningPanel(QWidget):
         """Flush the debounce immediately (editingFinished)."""
         self._debounce.stop()
         self._flush()
+
+    def _commit(self, key):
+        """On editing-finished: queue the field's current value, then flush now
+        (the FloatEdit has already clamped/reformatted it)."""
+        self._queue(key)
+        self._flush_now()
 
     def _flush(self):
         if self._dev is None or not self._pending:

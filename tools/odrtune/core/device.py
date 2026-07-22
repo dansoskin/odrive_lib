@@ -273,6 +273,11 @@ class Device:
         """Emergency stop: immediately disarm the motor by requesting IDLE."""
         self._axis.requested_state = IDLE
 
+    def clear_errors(self) -> None:
+        """Clear all device errors (fw 0.6.x device-level clear_errors();
+        also re-arms the brake resistor). The axis stays disarmed."""
+        self._raw.clear_errors()
+
     def set_input_pos(self, pos: float) -> None:
         self._axis.controller.input_pos = pos
 

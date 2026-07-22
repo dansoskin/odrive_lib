@@ -26,7 +26,9 @@ raw hex bitfield and decoded names, e.g. `0x1000 (CURRENT_LIMIT_VIOLATION)`; the
 decode table targets fw 0.6.x and appends a warning if the connected firmware's
 major.minor differs), a **Disarm (IDLE)** button (software disarm — requests
 IDLE; this is *not* a hardware emergency stop, and a physical safety circuit is
-still required), and two small monitor graphs (bus voltage, FET temperature).
+still required), a **Clear errors** button (device-level `clear_errors`; also
+re-arms the brake resistor and clears a stale procedure result), and two small
+monitor graphs (bus voltage, FET temperature).
 Below,
 the window is split: feature tabs on the **left**, a persistent **plots column
 on the right** that stays visible on every tab. The plots column holds the

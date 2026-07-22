@@ -64,10 +64,19 @@ class MainWindow(QMainWindow):
             "physical safety circuit is still required.")
         self._estop_btn.setEnabled(False)
         self._estop_btn.clicked.connect(self._estop)
+        self._clear_btn = QPushButton("Clear errors")
+        self._clear_btn.setToolTip(
+            "Clear all device errors (device-level clear_errors; also re-arms "
+            "the brake resistor). The axis stays disarmed.")
+        self._clear_btn.setEnabled(False)
+        self._clear_btn.clicked.connect(self._clear_errors)
+        btn_row = QHBoxLayout()
+        btn_row.addWidget(self._estop_btn)
+        btn_row.addWidget(self._clear_btn)
         status.addWidget(self._state_lbl)
         status.addWidget(self._result_lbl)
         status.addWidget(self._err_lbl)
-        status.addWidget(self._estop_btn)
+        status.addLayout(btn_row)
         top.addLayout(status, 0)
 
         self._bus = TimePlot("Bus voltage (V)", [("bus_voltage", "")], compact=True)
@@ -125,6 +134,7 @@ class MainWindow(QMainWindow):
         self._t0 = time.monotonic()
         self._tick_n = 0
         self._estop_btn.setEnabled(True)
+        self._clear_btn.setEnabled(True)
         # Window title carries the connected device's identity.
         try:
             maj, minr, rev = dev.fw_version()
@@ -148,6 +158,7 @@ class MainWindow(QMainWindow):
         self._device = None
         self._sampler = None
         self._estop_btn.setEnabled(False)
+        self._clear_btn.setEnabled(False)
         self.setWindowTitle("odrtune")
         self._state_lbl.setText("State: —")
         self._result_lbl.setText("Result: —")
@@ -172,6 +183,15 @@ class MainWindow(QMainWindow):
             self._device.estop()
         except Exception:  # noqa: BLE001
             pass
+
+    def _clear_errors(self):
+        if self._device is None:
+            return
+        try:
+            self._device.clear_errors()
+        except Exception:  # noqa: BLE001 - USB hiccup shouldn't crash the UI
+            return
+        self._update_status()   # refresh immediately, don't wait for the cadence
 
     def _update_status(self):
         if self._device is None:

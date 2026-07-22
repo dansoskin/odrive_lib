@@ -317,6 +317,22 @@ class Device:
     def reboot(self) -> None:
         self._raw.reboot()
 
+    # --- teardown ---
+    def disconnect(self) -> None:
+        """Best-effort release of the USB handle.
+
+        There is no public close API in the odrive/fibre package for this
+        version, so we just try `self._raw.__channel__.serial_device.close()`
+        inside try/except and otherwise simply drop our reference to the raw
+        object. Does NOT disarm the motor: the user may intentionally leave the
+        axis running after disconnecting."""
+        try:
+            self._raw.__channel__.serial_device.close()
+        except Exception:  # noqa: BLE001 - no public close API; best effort only
+            pass
+        self._raw = None
+        self._axis = None
+
     @property
     def raw(self):
         return self._raw

@@ -14,12 +14,17 @@ python -m pip install -r requirements.txt
 cd tools/odrtune
 python __main__.py        # or, from the repo root: python tools/odrtune
 ```
-Click **Connect** (ODrive plugged in over USB). The **top bar** holds the connect
+Click **Connect** (ODrive plugged in over USB); the button then becomes
+**Disconnect** (releases the USB handle and disables the tabs — it does *not*
+disarm the motor, so anything you left running keeps running; click **Connect**
+again to reattach). The **top bar** holds the connect
 controls, a live **driver state + error** readout (the error shows both the raw
 hex bitfield and decoded names, e.g. `0x1000 (CURRENT_LIMIT_VIOLATION)`; the
 decode table targets fw 0.6.x and appends a warning if the connected firmware's
-major.minor differs), an **E-STOP** button (disarms the motor — requests IDLE),
-and two small monitor graphs (bus voltage, FET temperature). Below,
+major.minor differs), a **Disarm (IDLE)** button (software disarm — requests
+IDLE; this is *not* a hardware emergency stop, and a physical safety circuit is
+still required), and two small monitor graphs (bus voltage, FET temperature).
+Below,
 the window is split: feature tabs on the **left**, a persistent **plots column
 on the right** that stays visible on every tab. The plots column holds the
 global **Window (s)** control, a **Pause** toggle (freezes sampling so you can
@@ -38,8 +43,11 @@ Left-hand tabs:
   1:3 gear → enter 3; `1` = no conversion; torque stays raw; persisted to
   `~/.odrtune/config.json`); a setpoint box with
   **Send** and an optional **live send**; a **Set current position** field (redefines the
-  axis's absolute position — homing/zeroing); **Arm** / **Idle** / **Stop**
-  shortcuts; and a **Motion shaping** group — an input-mode selector
+  axis's absolute position — homing/zeroing); **Arm** / **Idle** /
+  **Stop (hold)** shortcuts (Stop commands a mode-appropriate safe stop while
+  leaving the axis armed: position mode *holds the current position*, velocity
+  mode commands zero speed, torque mode zero torque); and a **Motion shaping**
+  group — an input-mode selector
   (Passthrough / Velocity ramp / Position filter / Trajectory / Torque ramp)
   with the ramp/acceleration fields relevant to the chosen mode (velocity ramp
   rate, trajectory vel/accel/decel limits, filter bandwidth, torque ramp rate).

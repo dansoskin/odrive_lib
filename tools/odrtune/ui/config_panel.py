@@ -33,6 +33,11 @@ class ConfigPanel(QWidget):
 
     def set_device(self, dev):
         self._dev = dev
+        if dev is None:                    # disconnected
+            for b in (self._backup_btn, self._restore_btn, self._save_btn):
+                b.setEnabled(False)
+            self._status.setText("Connect a device.")
+            return
         for b in (self._backup_btn, self._restore_btn, self._save_btn):
             b.setEnabled(True)
         self._status.setText("Ready.")

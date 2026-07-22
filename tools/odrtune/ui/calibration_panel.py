@@ -27,6 +27,10 @@ class CalibrationPanel(QWidget):
 
     def set_device(self, dev):
         self._dev = dev
+        if dev is None:                    # disconnected
+            self._btn.setEnabled(False)
+            self._status.setText("Connect a device to calibrate.")
+            return
         self._btn.setEnabled(True)
         self._status.setText("Ready.")
 

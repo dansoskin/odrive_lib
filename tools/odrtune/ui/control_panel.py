@@ -147,6 +147,9 @@ class ControlPanel(QWidget):
     # --- device lifecycle ---
     def set_device(self, dev):
         self._dev = dev
+        if dev is None:                    # disconnected: disable all controls
+            self._set_enabled(False)
+            return
         self._sync_combo(self._req, dev.get_requested_state())
         self._sync_combo(self._mode, dev.get_control_mode())
         self._update_units()

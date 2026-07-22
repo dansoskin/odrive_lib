@@ -300,6 +300,9 @@ class TuningPanel(QWidget):
     # --- device lifecycle ---
     def set_device(self, dev):
         self._dev = dev
+        if dev is None:                    # disconnected: disable all controls
+            self._set_enabled(False)
+            return
         values = dev.get_tuning()
         for key, (kind, w) in self._widgets.items():
             present = key in values

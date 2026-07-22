@@ -44,6 +44,7 @@ class MainWindow(QMainWindow):
         top = QHBoxLayout()
         self._connect = ConnectPanel()
         self._connect.connected.connect(self._set_device)
+        self._connect.disconnected.connect(self._on_disconnected)
         top.addWidget(self._connect, 0)
 
         # Live driver status + emergency stop (visible on every tab).
@@ -115,6 +116,23 @@ class MainWindow(QMainWindow):
         for p in self._device_listeners:
             p.set_device(dev)
         self._timer.start()
+
+    def _on_disconnected(self):
+        """Tear down sampling and release the device (see ConnectPanel).
+        Does not disarm the motor — that's the user's choice."""
+        self._timer.stop()
+        if self._device is not None:
+            try:
+                self._device.disconnect()
+            except Exception:  # noqa: BLE001 - best-effort close
+                pass
+        self._device = None
+        self._sampler = None
+        self._estop_btn.setEnabled(False)
+        self._state_lbl.setText("State: —")
+        self._err_lbl.setText("Error: —")
+        for p in self._device_listeners:
+            p.set_device(None)
 
     def _estop(self):
         if self._device is None:

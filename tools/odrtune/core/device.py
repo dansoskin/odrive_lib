@@ -183,6 +183,17 @@ class Device:
             "bus_current": self._raw.ibus,
         }
 
+    def diagnostics(self) -> dict:
+        """Live read-only limiting/diagnostic values (guarded). NaN where the
+        connected firmware doesn't expose the attribute."""
+        a = self._axis
+        return {
+            "effective_current_lim": _get(a.motor, "effective_current_lim"),
+            "effective_torque_setpoint": _get(a.controller,
+                                              "effective_torque_setpoint"),
+            "vel_integrator_torque": _get(a.controller, "vel_integrator_torque"),
+        }
+
     # --- state / setpoints ---
     def set_requested_state(self, state: int) -> None:
         self._axis.requested_state = state
@@ -316,6 +327,26 @@ class Device:
             "ff_pm_flux_linkage": (m, "ff_pm_flux_linkage"),
             "motor_model_l_d": (m, "motor_model_l_d"),
             "motor_model_l_q": (m, "motor_model_l_q"),
+            # motor-model validity
+            "phase_resistance_valid": (m, "phase_resistance_valid"),
+            "phase_inductance_valid": (m, "phase_inductance_valid"),
+            "ff_pm_flux_linkage_valid": (m, "ff_pm_flux_linkage_valid"),
+            "motor_model_l_dq_valid": (m, "motor_model_l_dq_valid"),
+            # velocity & overspeed behavior
+            "enable_vel_limit": (c, "enable_vel_limit"),
+            "enable_torque_mode_vel_limit": (c, "enable_torque_mode_vel_limit"),
+            "vel_limit_tolerance": (c, "vel_limit_tolerance"),
+            "enable_overspeed_error": (c, "enable_overspeed_error"),
+            # torque & bus limits (axis-level config)
+            "torque_soft_min": (a.config, "torque_soft_min"),
+            "torque_soft_max": (a.config, "torque_soft_max"),
+            "I_bus_soft_min": (a.config, "I_bus_soft_min"),
+            "I_bus_soft_max": (a.config, "I_bus_soft_max"),
+            "P_bus_soft_min": (a.config, "P_bus_soft_min"),
+            "P_bus_soft_max": (a.config, "P_bus_soft_max"),
+            # report filtering
+            "I_measured_report_filter_k": (a.motor.foc, "I_measured_report_filter_k"),
+            "power_torque_report_filter_bandwidth": (m, "power_torque_report_filter_bandwidth"),
         }
 
     def get_tuning(self) -> dict:

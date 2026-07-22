@@ -35,6 +35,7 @@ class FloatSpec:
     minv: float = 0.0
     allow_inf: bool = False
     requires_idle: bool = False
+    inf_negative: bool = False   # ∞ toggle writes -inf (min-side limits)
     kind: str = _F
 
 
@@ -46,9 +47,9 @@ class BoolSpec:
 
 
 def _f(key, label, suffix, decimals, maxv, *, minv=0.0,
-       allow_inf=False, requires_idle=False):
+       allow_inf=False, requires_idle=False, inf_negative=False):
     return FloatSpec(key, label, suffix, decimals, maxv, minv,
-                     allow_inf, requires_idle)
+                     allow_inf, requires_idle, inf_negative)
 
 
 def _b(key, label):
@@ -86,6 +87,23 @@ _GROUPS = [
         _f("vel_integrator_decay_gain", "Integrator decay", "", 5, 1.0, minv=0.0),
         _f("vel_limit", "Vel limit", " turns/s", 3, 100000.0, allow_inf=True),
     ]),
+    ("Velocity & overspeed limits", [
+        _b("enable_vel_limit", "Enforce vel limit"),
+        _b("enable_torque_mode_vel_limit", "Torque-mode vel limit"),
+        _f("vel_limit_tolerance", "Vel limit tolerance", "", 3, 100.0, minv=1.0),
+        _b("enable_overspeed_error", "Overspeed error"),
+    ]),
+    ("Torque & bus limits", [
+        _f("torque_soft_min", "Torque soft min", " Nm", 3, 0.0,
+           minv=-100000.0, allow_inf=True, inf_negative=True),
+        _f("torque_soft_max", "Torque soft max", " Nm", 3, 100000.0, allow_inf=True),
+        _f("I_bus_soft_min", "Bus current soft min", " A", 2, 0.0,
+           minv=-100000.0, allow_inf=True, inf_negative=True),
+        _f("I_bus_soft_max", "Bus current soft max", " A", 2, 100000.0, allow_inf=True),
+        _f("P_bus_soft_min", "Bus power soft min", " W", 1, 0.0,
+           minv=-100000.0, allow_inf=True, inf_negative=True),
+        _f("P_bus_soft_max", "Bus power soft max", " W", 1, 100000.0, allow_inf=True),
+    ]),
     ("Position loop", [
         _f("pos_gain", "Gain", " 1/s", 3, 100000.0),
         _f("inertia", "Inertia (accel FF)", "", 5, 100000.0),
@@ -98,10 +116,19 @@ _GROUPS = [
     ("Motor model (normally from calibration)", [
         _f("torque_constant", "Torque constant", " Nm/A", 5, 100.0),
         _f("phase_resistance", "Phase resistance", " ohm", 5, 100.0, requires_idle=True),
+        _b("phase_resistance_valid", "Phase resistance valid"),
         _f("phase_inductance", "Phase inductance", " H", 8, 10.0, requires_idle=True),
+        _b("phase_inductance_valid", "Phase inductance valid"),
         _f("ff_pm_flux_linkage", "PM flux linkage", " Wb", 8, 100.0),
+        _b("ff_pm_flux_linkage_valid", "PM flux linkage valid"),
         _f("motor_model_l_d", "Model L_d", " H", 8, 10.0),
         _f("motor_model_l_q", "Model L_q", " H", 8, 10.0),
+        _b("motor_model_l_dq_valid", "Model L_d/L_q valid"),
+    ]),
+    ("Report filtering", [
+        _f("I_measured_report_filter_k", "Iq/Id report filter k", "", 4, 1.0, minv=0.0),
+        _f("power_torque_report_filter_bandwidth", "Power/torque report bw",
+           " 1/s", 1, 100000.0),
     ]),
 ]
 
@@ -207,7 +234,64 @@ _TIPS = {
         "Optional q-axis inductance [H] for feedforward and field weakening. Used only "
         "when motor_model_l_dq_valid is true; otherwise phase_inductance is used. Does "
         "not change the current PI gains.",
+    "phase_resistance_valid":
+        "Marks the manually entered value as valid so the firmware uses it. Normally "
+        "set by calibration.",
+    "phase_inductance_valid":
+        "Marks the manually entered value as valid so the firmware uses it. Normally "
+        "set by calibration.",
+    "ff_pm_flux_linkage_valid":
+        "When true, the explicit ff_pm_flux_linkage overrides the value derived from "
+        "torque constant and pole pairs.",
+    "motor_model_l_dq_valid":
+        "When true, the current feedforward uses motor_model_l_d/l_q instead of "
+        "phase_inductance.",
+    "enable_vel_limit":
+        "Enforce vel_limit in velocity/position control.",
+    "enable_torque_mode_vel_limit":
+        "In torque mode, reduce commanded torque as speed approaches vel_limit. When "
+        "active this can look like poor torque tuning.",
+    "vel_limit_tolerance":
+        "Multiple of vel_limit at which the overspeed error trips (e.g. 1.2 = 20% "
+        "over). Used with enable_overspeed_error.",
+    "enable_overspeed_error":
+        "Disarm with VELOCITY_LIMIT_VIOLATION when speed exceeds vel_limit x tolerance.",
+    "torque_soft_min":
+        "Independent negative/positive torque clamp [Nm]. ±Infinity disables.",
+    "torque_soft_max":
+        "Independent negative/positive torque clamp [Nm]. ±Infinity disables.",
+    "I_bus_soft_min":
+        "DC bus current clamp [A]; when hit ODrive folds back motoring/braking torque "
+        "— can masquerade as bad tuning.",
+    "I_bus_soft_max":
+        "DC bus current clamp [A]; when hit ODrive folds back motoring/braking torque "
+        "— can masquerade as bad tuning.",
+    "P_bus_soft_min":
+        "DC bus power clamp [W]; when hit ODrive folds back motoring/braking torque — "
+        "can masquerade as bad tuning.",
+    "P_bus_soft_max":
+        "DC bus power clamp [W]; when hit ODrive folds back motoring/braking torque — "
+        "can masquerade as bad tuning.",
+    "I_measured_report_filter_k":
+        "Low-pass gain applied to *reported* Iq/Id values only — the control loop is "
+        "unaffected. 1 = unfiltered. Filtered reporting can hide ripple that still "
+        "exists.",
+    "power_torque_report_filter_bandwidth":
+        "Filter bandwidth for reported power/torque values only; does not affect "
+        "control.",
 }
+
+# read-only diagnostics: key -> (label, suffix, tooltip)
+_DIAG = [
+    ("effective_current_lim", "Effective current limit", " A",
+     "Actual dynamic current limit after motor/inverter/temperature/voltage "
+     "constraints — compare with current_soft_max."),
+    ("effective_torque_setpoint", "Effective torque setpoint", " Nm",
+     "Final torque request out of the controller after all limiting (incl. "
+     "torque-mode vel limit)."),
+    ("vel_integrator_torque", "Vel integrator torque", " Nm",
+     "Current torque contribution of the velocity integrator — watch for windup."),
+]
 
 _GUIDE_HTML = (
     "<b>Tuning guide</b>"
@@ -255,6 +339,7 @@ class TuningPanel(QWidget):
         self._inf_btns = {}      # key -> QToolButton (allow_inf fields)
         self._apply_btns = {}    # key -> QPushButton (requires_idle fields)
         self._pending = {}       # debounced float writes {key: value}
+        self._diag_labels = {}   # key -> QLabel (read-only diagnostics)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -277,6 +362,18 @@ class TuningPanel(QWidget):
         gl.addWidget(self._guide_body)
         guide.toggled.connect(self._guide_body.setVisible)
         root.addWidget(guide)
+
+        # --- live read-only diagnostics (effective limits) ---
+        diag_group = QGroupBox("Diagnostics (read-only)")
+        diag_form = QFormLayout(diag_group)
+        for key, label, _suffix, tip in _DIAG:
+            lbl = QLabel("—")
+            lbl.setToolTip(tip)
+            cap = QLabel(label + ":")
+            cap.setToolTip(tip)
+            diag_form.addRow(cap, lbl)
+            self._diag_labels[key] = lbl
+        root.addWidget(diag_group)
 
         # debounced float writes: restarted on each valueChanged, flushed on
         # editingFinished; a single batch is written and read back per fire.
@@ -313,9 +410,12 @@ class TuningPanel(QWidget):
                     row.addWidget(w, 1)
                     if spec.allow_inf:
                         inf = QToolButton()
-                        inf.setText("∞")
+                        inf.setText("-∞" if spec.inf_negative else "∞")
                         inf.setCheckable(True)
-                        inf.setToolTip("Set this value to infinity (disable the limit).")
+                        inf.setToolTip(
+                            "Set this value to -infinity (disable the limit)."
+                            if spec.inf_negative
+                            else "Set this value to infinity (disable the limit).")
                         inf.toggled.connect(
                             lambda on, k=key: self._on_inf_toggled(k, on))
                         self._inf_btns[key] = inf
@@ -399,6 +499,8 @@ class TuningPanel(QWidget):
         self._status.setStyleSheet("")
         if dev is None:                    # disconnected: disable all controls
             self._set_enabled(False)
+            for lbl in self._diag_labels.values():
+                lbl.setText("—")
             return
         values = dev.get_tuning()
         for key, (kind, w) in self._widgets.items():
@@ -415,6 +517,19 @@ class TuningPanel(QWidget):
         for w in (self._seq_chan, self._seq_a, self._seq_b, self._seq_dwell,
                   self._seq_btn):
             w.setEnabled(True)
+
+    def update_diagnostics(self, diag: dict) -> None:
+        """Refresh the read-only diagnostics labels from Device.diagnostics().
+        A missing/NaN value shows as an em dash."""
+        for key, label, suffix, _tip in _DIAG:
+            lbl = self._diag_labels.get(key)
+            if lbl is None:
+                continue
+            val = diag.get(key)
+            if val is None or (isinstance(val, float) and math.isnan(val)):
+                lbl.setText("—")
+            else:
+                lbl.setText(f"{val:.4g}{suffix}")
 
     # --- helpers ---
     def _set_enabled(self, on: bool):
@@ -481,12 +596,20 @@ class TuningPanel(QWidget):
             return
         self._write_and_verify({key: value})
 
+    def _inf_value(self, key):
+        """The infinity a key's ∞ toggle writes: -inf for min-side limits."""
+        spec = self._specs.get(key)
+        if spec is not None and getattr(spec, "inf_negative", False):
+            return float("-inf")
+        return float("inf")
+
     def _on_inf_toggled(self, key, checked):
         w = self._widgets[key][1]
         w.setEnabled(not checked and self._dev is not None)
         if self._dev is None:
             return
-        self._write_and_verify({key: float("inf") if checked else w.value()})
+        self._write_and_verify(
+            {key: self._inf_value(key) if checked else w.value()})
 
     def _apply_idle(self, key):
         """Apply a requires-IDLE field: refuse unless the axis is in IDLE."""

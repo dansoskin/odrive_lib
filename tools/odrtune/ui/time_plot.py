@@ -18,21 +18,26 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QCheckBox, QToolButton)
 
-# pens by trace position: actual / target / ideal / (extra)
+# pens by trace position: actual / target / ideal / output / integrator / (extra)
 _PENS = [
     pg.mkPen("#4fc3f7", width=2),                                  # blue solid
     pg.mkPen("#ff8a65", width=1, style=Qt.PenStyle.DashLine),      # orange dashed
     pg.mkPen("#81c784", width=1, style=Qt.PenStyle.DotLine),       # green dotted
     pg.mkPen("#ba68c8", width=1, style=Qt.PenStyle.DashDotLine),   # purple
+    pg.mkPen("#ffd54f", width=1),                                  # amber
+    pg.mkPen("#f06292", width=1, style=Qt.PenStyle.DashLine),      # pink dashed
 ]
 _CURSOR_PEN = pg.mkPen("#9e9e9e", width=1, style=Qt.PenStyle.DashLine)
 
 
 class TimePlot(QWidget):
     def __init__(self, title, traces, compact=False, parent=None):
-        """traces: list of (sampler_key, label). First is the primary/actual."""
+        """traces: list of (sampler_key, label[, visible_default]). First is the
+        primary/actual. The optional third element (default True) sets whether
+        the trace starts visible; unchecked-by-default traces begin hidden."""
         super().__init__(parent)
-        self._traces = list(traces)
+        self._traces = [(t[0], t[1], t[2] if len(t) > 2 else True)
+                        for t in traces]
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -49,9 +54,9 @@ class TimePlot(QWidget):
         self._trace_cb = []
         if len(self._traces) > 1:
             header.addSpacing(6)
-            for _key, label in self._traces:
+            for _key, label, vis in self._traces:
                 cb = QCheckBox(label)
-                cb.setChecked(True)
+                cb.setChecked(vis)
                 header.addWidget(cb)
                 self._trace_cb.append(cb)
         header.addStretch(1)
@@ -82,13 +87,15 @@ class TimePlot(QWidget):
         if multi:
             pi.addLegend(offset=(-10, 10))
         self._curves = []
-        for i, (key, label) in enumerate(self._traces):
+        for i, (key, label, _vis) in enumerate(self._traces):
             pen = _PENS[i % len(_PENS)]
             curve = self._pw.plot(pen=pen, name=(label if multi else None))
             self._curves.append((key, label, curve))
 
-        # Wire per-trace checkboxes now that curves exist (index-aligned).
+        # Wire per-trace checkboxes now that curves exist (index-aligned) and
+        # apply the initial visibility from each trace's default.
         for i, cb in enumerate(self._trace_cb):
+            self._curves[i][2].setVisible(cb.isChecked())
             cb.toggled.connect(lambda on, idx=i: self._curves[idx][2].setVisible(on))
 
         # --- crosshair cursor (hidden until enabled) ---
@@ -116,6 +123,16 @@ class TimePlot(QWidget):
     @property
     def plot_item(self):
         return self._pw.getPlotItem()
+
+    @property
+    def collapsed(self) -> bool:
+        """True when minimized via the collapse button (plot area hidden)."""
+        return self._collapse.isChecked()
+
+    @property
+    def keys(self):
+        """Sampler channel keys this plot draws."""
+        return [key for key, _label, _vis in self._traces]
 
     def refresh(self, sampler) -> None:
         t = sampler.series("t")

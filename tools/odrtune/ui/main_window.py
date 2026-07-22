@@ -35,6 +35,7 @@ class MainWindow(QMainWindow):
         self._sampler = None
         self._device = None
         self._t0 = 0.0
+        self._tick_n = 0
         self._device_listeners = []
 
         central = QWidget()
@@ -79,7 +80,8 @@ class MainWindow(QMainWindow):
         self._control = ControlPanel()
         self._add_listener_tab("Control", self._control)
         self._add_listener_tab("Calibration", CalibrationPanel())
-        self._add_listener_tab("Tuning", TuningPanel())
+        self._tuning = TuningPanel()
+        self._add_listener_tab("Tuning", self._tuning)
         self._add_listener_tab("Config", ConfigPanel())
         split.addWidget(self._tabs)
 
@@ -112,6 +114,7 @@ class MainWindow(QMainWindow):
         self._device = dev
         self._sampler = Sampler(dev, maxlen=6000)
         self._t0 = time.monotonic()
+        self._tick_n = 0
         self._estop_btn.setEnabled(True)
         for p in self._device_listeners:
             p.set_device(dev)
@@ -166,7 +169,18 @@ class MainWindow(QMainWindow):
     def _tick(self):
         if self._sampler is None:
             return
-        self._update_status()          # keep state/error live even when paused
+        # Stagger the status/diagnostics reads: state + errors + effective
+        # limits each cost extra fibre round-trips, so read them only every 5th
+        # tick (still live enough, even when paused). Sampling stays every tick.
+        n = self._tick_n
+        self._tick_n += 1
+        if n % 5 == 0:
+            self._update_status()      # keep state/error live even when paused
+            if self._device is not None:
+                try:
+                    self._tuning.update_diagnostics(self._device.diagnostics())
+                except Exception:  # noqa: BLE001 - USB hiccup shouldn't crash UI
+                    pass
         if self._plots.paused():
             return                     # freeze graphs/sampling for inspection
         t = time.monotonic() - self._t0

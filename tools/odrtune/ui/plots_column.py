@@ -14,16 +14,23 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
 
 from ui.time_plot import TimePlot
 
-# large graphs: (title, [(sampler_key, label), ...])  actual / target / ideal
+# large graphs: (title, [(sampler_key, label[, visible_default]), ...])
+# actual / target / ideal / output / integrator / error. Traces marked False
+# start hidden (their checkbox unchecked). Titles name the motor frame.
 _MAIN = [
-    ("Position (turns)", [("pos", "actual"), ("pos_target", "target"),
-                          ("pos_ref", "ideal")]),
-    ("Velocity (turns/s)", [("vel", "actual"), ("vel_target", "target"),
-                            ("vel_ref", "ideal")]),
+    ("Position (motor turns)", [("pos", "actual"), ("pos_target", "target"),
+                                ("pos_ref", "ideal"), ("pos_err", "error", False)]),
+    ("Velocity (motor turns/s)", [("vel", "actual"), ("vel_target", "target"),
+                                  ("vel_ref", "ideal"), ("vel_err", "error", False)]),
     ("Current Iq (A)", [("iq_measured", "actual"), ("iq_setpoint", "command")]),
-    ("Torque (Nm)", [("torque_estimate", "actual"), ("torque_target", "target"),
-                     ("torque_ref", "ideal")]),
+    ("Torque (Nm, motor)", [("torque_estimate", "actual"), ("torque_target", "target"),
+                            ("torque_ref", "ideal"), ("torque_output", "output", True),
+                            ("vel_integrator_torque", "integrator", False)]),
 ]
+
+# Channels always sampled regardless of which plots are collapsed: the top-bar
+# bus/FET monitors and the inputs to the client-side error channels.
+_BASE_KEYS = ("bus_voltage", "fet_temp", "pos", "pos_ref", "vel", "vel_ref")
 
 
 class PlotsColumn(QWidget):
@@ -74,6 +81,19 @@ class PlotsColumn(QWidget):
     def paused(self) -> bool:
         return self._pause.isChecked()
 
-    def refresh(self, sampler) -> None:
+    def needed_keys(self) -> set:
+        """Union of the sampler keys of the non-collapsed plots plus the base
+        keys (top-bar monitors + error-channel inputs). A collapsed plot's
+        exclusive channels aren't needed for display."""
+        keys = set(_BASE_KEYS)
         for p in self._plots:
-            p.refresh(sampler)
+            if not p.collapsed:
+                keys.update(p.keys)
+        return keys
+
+    def refresh(self, sampler) -> None:
+        # Skip collapsed plots — a cheap CPU win, since a minimized graph has no
+        # visible curves to redraw.
+        for p in self._plots:
+            if not p.collapsed:
+                p.refresh(sampler)

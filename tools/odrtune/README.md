@@ -29,11 +29,17 @@ the window is split: feature tabs on the **left**, a persistent **plots column
 on the right** that stays visible on every tab. The plots column holds the
 global **Window (s)** control, a **Pause** toggle (freezes sampling so you can
 inspect — pan/zoom/cursor still work), and the four large graphs — position,
-velocity, current (Iq), torque. Each overlays up to three traces: **actual**
+velocity, current (Iq), torque. Titles name the **motor frame** explicitly
+(motor turns, motor turns/s, Nm motor). Each overlays several traces: **actual**
 (measured), **target** (the raw command you gave, e.g. `input_pos`), and
 **ideal** (the controller's effective setpoint right now, e.g.
 `controller.pos_setpoint` — where the motor *should* be after ramps/filtering/
-trajectory). Current shows actual + command (`Iq_setpoint`).
+trajectory). Position and velocity add an **error** trace (ideal − actual,
+computed client-side, hidden by default). Torque adds **output**
+(`effective_torque_setpoint`, the final request after all limiting) and
+**integrator** (`vel_integrator_torque`, hidden by default). Current shows
+actual + command (`Iq_setpoint`). Traces hidden by default (error, integrator)
+have their per-trace checkbox unchecked; tick it to show them.
 
 Left-hand tabs:
 - **Control** — requested-state dropdown; a control mode selector
@@ -53,13 +59,20 @@ Left-hand tabs:
   rate, trajectory vel/accel/decel limits, filter bandwidth, torque ramp rate).
 - **Calibration** — run the full motor+encoder calibration and see the result.
 - **Tuning** — adjust the key control-loop parameters independently, grouped
-  inner-to-outer (scrollable): **feedback** (encoder + commutation-encoder
+  inner-to-outer (scrollable): a **Diagnostics** readout at the top (live
+  read-only effective current limit, effective torque setpoint, and velocity
+  integrator torque), then **feedback** (encoder + commutation-encoder
   bandwidth), **current loop** (bandwidth, soft/hard current max, current slew
   limit), **current feedforward** (cross-coupling wL, back-EMF, dI/dt enables for
   high-speed tracking), **velocity loop** (gain, integrator gain + limit + decay,
-  vel limit), **position loop** (gain, inertia accel-FF), **gain scheduling**
-  (enable + width + min ratio), and **motor model** (torque constant, phase R/L,
-  PM flux linkage, model L_d/L_q — normally from calibration). Plus a
+  vel limit), **velocity & overspeed limits** (enforce vel limit, torque-mode vel
+  limit, tolerance, overspeed error), **torque & bus limits** (signed torque and
+  DC bus current/power soft clamps, each with a ±∞ disable toggle), **position
+  loop** (gain, inertia accel-FF), **gain scheduling** (enable + width + min
+  ratio), **motor model** (torque constant, phase R/L, PM flux linkage, model
+  L_d/L_q + their validity flags — normally from calibration), and **report
+  filtering** (reported-only Iq/Id and power/torque filter settings that do not
+  affect control). Plus a
   **back-and-forth sequence** (drive the motor between points A and B at a set
   dwell) so you can watch the repeated step on the right-hand graphs while you
   adjust gains. Tune inner-to-outer: feedback → current (+FF) → velocity →
@@ -68,7 +81,8 @@ Left-hand tabs:
   `key ✓` or the read-back mismatch, and the field reverts on failure); a few
   fields that change low-level current measurement (phase R/L, current hard max)
   require the axis in **IDLE** and an explicit **Apply**, and fields that accept
-  infinity (vel limit, integrator limit) have an **∞** toggle. **Hover
+  infinity (vel limit, integrator limit, torque/bus soft limits) have an **∞**
+  toggle (min-side limits write −∞ instead). **Hover
   any field** for a hint on what it does and how it affects the loop, and expand
   the collapsible **Tuning guide** at the top for ODrive's guidelines plus tips.
 - **Config** — backup/restore config JSON and save to the ODrive's NVM.

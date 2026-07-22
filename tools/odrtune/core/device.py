@@ -100,6 +100,20 @@ def _get(obj, attr):
         return float("nan")
 
 
+def _getp(root, path):
+    """Walk a dotted attribute path from ``root``, returning NaN if any hop is
+    missing. Guards a whole feedback channel (including a missing intermediate
+    object such as ``motor_thermistor``) so one absent path just shows a gap
+    instead of killing the entire sampling loop."""
+    obj = root
+    try:
+        for part in path.split("."):
+            obj = getattr(obj, part)
+        return obj
+    except Exception:  # noqa: BLE001
+        return float("nan")
+
+
 def values_match(requested, actual) -> bool:
     """True if a written value read back as expected.
 
@@ -160,27 +174,30 @@ class Device:
     # --- feedback snapshot ---
     def feedback(self) -> dict:
         a = self._axis
-        ct = a.controller
         # For each channel: measured (actual), target (raw command you gave),
         # and ref (the controller's effective setpoint = where the motor should
         # be right now, after ramp/filter/trajectory). pos uses pos_abs (the
-        # absolute frame the controller and set_abs_pos operate in).
+        # absolute frame the controller and set_abs_pos operate in). Every path
+        # is guarded (_getp) so one attribute a given firmware/config lacks
+        # becomes a NaN gap instead of killing the whole sampling loop.
         return {
-            "pos": a.pos_vel_mapper.pos_abs,
-            "pos_target": ct.input_pos,
-            "pos_ref": _get(ct, "pos_setpoint"),
-            "vel": a.pos_vel_mapper.vel,
-            "vel_target": ct.input_vel,
-            "vel_ref": _get(ct, "vel_setpoint"),
-            "iq_setpoint": a.motor.foc.Iq_setpoint,
-            "iq_measured": a.motor.foc.Iq_measured,
-            "torque_target": ct.input_torque,
-            "torque_ref": _get(ct, "torque_setpoint"),
-            "torque_estimate": a.motor.torque_estimate,
-            "fet_temp": a.motor.fet_thermistor.temperature,
-            "motor_temp": a.motor.motor_thermistor.temperature,
-            "bus_voltage": self._raw.vbus_voltage,
-            "bus_current": self._raw.ibus,
+            "pos": _getp(a, "pos_vel_mapper.pos_abs"),
+            "pos_target": _getp(a, "controller.input_pos"),
+            "pos_ref": _getp(a, "controller.pos_setpoint"),
+            "vel": _getp(a, "pos_vel_mapper.vel"),
+            "vel_target": _getp(a, "controller.input_vel"),
+            "vel_ref": _getp(a, "controller.vel_setpoint"),
+            "iq_setpoint": _getp(a, "motor.foc.Iq_setpoint"),
+            "iq_measured": _getp(a, "motor.foc.Iq_measured"),
+            "torque_target": _getp(a, "controller.input_torque"),
+            "torque_ref": _getp(a, "controller.torque_setpoint"),
+            "torque_estimate": _getp(a, "motor.torque_estimate"),
+            "torque_output": _getp(a, "controller.effective_torque_setpoint"),
+            "vel_integrator_torque": _getp(a, "controller.vel_integrator_torque"),
+            "fet_temp": _getp(a, "motor.fet_thermistor.temperature"),
+            "motor_temp": _getp(a, "motor.motor_thermistor.temperature"),
+            "bus_voltage": _getp(self._raw, "vbus_voltage"),
+            "bus_current": _getp(self._raw, "ibus"),
         }
 
     def diagnostics(self) -> dict:

@@ -43,6 +43,17 @@ class TimePlot(QWidget):
         header = QHBoxLayout(self._header)
         header.setContentsMargins(2, 0, 2, 0)
         header.addWidget(QLabel(f"<b>{title}</b>"))
+        # Per-trace visibility toggles (multi-trace plots only), between the
+        # title and the latest-value label. Unchecking hides that curve and
+        # drops it from the latest-value text.
+        self._trace_cb = []
+        if len(self._traces) > 1:
+            header.addSpacing(6)
+            for _key, label in self._traces:
+                cb = QCheckBox(label)
+                cb.setChecked(True)
+                header.addWidget(cb)
+                self._trace_cb.append(cb)
         header.addStretch(1)
         self._latest = QLabel("")
         header.addWidget(self._latest)
@@ -76,6 +87,10 @@ class TimePlot(QWidget):
             curve = self._pw.plot(pen=pen, name=(label if multi else None))
             self._curves.append((key, label, curve))
 
+        # Wire per-trace checkboxes now that curves exist (index-aligned).
+        for i, cb in enumerate(self._trace_cb):
+            cb.toggled.connect(lambda on, idx=i: self._curves[idx][2].setVisible(on))
+
         # --- crosshair cursor (hidden until enabled) ---
         self._vline = pg.InfiniteLine(angle=90, movable=False, pen=_CURSOR_PEN)
         self._hline = pg.InfiniteLine(angle=0, movable=False, pen=_CURSOR_PEN)
@@ -106,10 +121,11 @@ class TimePlot(QWidget):
         t = sampler.series("t")
         parts = []
         multi = len(self._curves) > 1
-        for key, label, curve in self._curves:
+        for i, (key, label, curve) in enumerate(self._curves):
             data = sampler.series(key)
-            curve.setData(t, data)
-            if data:
+            curve.setData(t, data)   # keep hidden curves fed so re-checking is up to date
+            visible = self._trace_cb[i].isChecked() if self._trace_cb else True
+            if data and visible:
                 parts.append(f"{label} {data[-1]:.4g}" if multi
                              else f"{data[-1]:.4g}")
         self._latest.setText("   ".join(parts))

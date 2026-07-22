@@ -73,6 +73,9 @@ Each graph has a header showing its latest value(s) and three controls: **auto Y
 to zoom Y by hand), **cursor** (a crosshair that follows the mouse and reads out
 time and value for measurement), and a **–/+** minimize button that collapses the
 graph to just its header (latest value still visible) so it takes no space.
+Multi-trace graphs additionally show one small **per-trace checkbox** (e.g.
+`actual` / `target` / `ideal`) next to the title, checked by default —
+unchecking hides that trace and drops it from the latest-value readout.
 
 Note on the Position graph: it plots the **absolute** position (`pos_abs`) — the
 frame the controller and `input_pos`/`Set current position` operate in — so

@@ -51,7 +51,7 @@ _GROUPS = [
         _f("vel_gain", "Gain", " Nm/(turn/s)", 4, 1000.0),
         _f("vel_integrator_gain", "Integrator gain", " Nm/turn", 4, 1000.0),
         _f("vel_integrator_limit", "Integrator limit", "", 2, 100000.0),
-        _f("vel_integrator_decay_gain", "Integrator decay", "", 5, 1000.0),
+        _f("vel_integrator_decay_gain", "Integrator decay", "", 5, 1.0),
         _f("vel_limit", "Vel limit", " turns/s", 3, 100000.0),
     ]),
     ("Position loop", [
@@ -116,9 +116,10 @@ _TIPS = {
         "Anti-windup clamp on the velocity integrator's output. Bounds windup during "
         "saturation; often tied to the current limit.",
     "vel_integrator_decay_gain":
-        "Leaky-integrator decay: bleeds the integrator toward zero when error is small, "
-        "reducing post-move overshoot while still allowing a high integrator gain. "
-        "0 disables.",
+        "When the velocity controller output is saturated, the accumulated integrator "
+        "torque is multiplied by this value every control tick (anti-windup). Range 0–1: "
+        "1.0 disables the decay; smaller values unwind the integrator faster while "
+        "saturated.",
     "vel_limit":
         "Maximum commanded speed (turns/s). Also clamps the velocity the position loop "
         "may request. Set to your true max operating speed.",
@@ -194,6 +195,7 @@ class TuningPanel(QWidget):
         super().__init__(parent)
         self._dev = None
         self._seq_i = 0
+        self._seq_saved = {}     # axis state saved on sequence Start, restored on Stop
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -232,6 +234,13 @@ class TuningPanel(QWidget):
                     w = QDoubleSpinBox()
                     w.setRange(0.0, maxv)
                     w.setDecimals(decimals)
+                    # The float spec has no min field yet; Phase 1 will formalize
+                    # one. Until then, special-case the slew limit to a strictly
+                    # positive minimum (0 A/s would freeze the current command);
+                    # widen decimals so 0.001 is actually representable.
+                    if key == "current_slew_rate_limit":
+                        w.setDecimals(max(decimals, 3))
+                        w.setMinimum(0.001)
                     w.setSuffix(suffix)
                     w.setToolTip(_TIPS.get(key, ""))
                     w.valueChanged.connect(lambda v, k=key: self._apply(k, v))
@@ -283,6 +292,7 @@ class TuningPanel(QWidget):
         root.addStretch(1)
 
         self._seq_btn.toggled.connect(self._toggle_seq)
+        self._seq_dwell.valueChanged.connect(self._on_dwell_changed)
         self._seq_timer = QTimer(self)
         self._seq_timer.timeout.connect(self._seq_tick)
         self._set_enabled(False)
@@ -329,18 +339,71 @@ class TuningPanel(QWidget):
             return
         if on:
             ch = self._seq_chan.currentData()
+            # Save what we're about to change so Stop can put it all back.
             try:
+                self._seq_saved = {
+                    "control_mode": self._dev.get_control_mode(),
+                    "input_mode": self._dev.get_motion_config()["input_mode"],
+                    "requested_state": self._dev.get_requested_state(),
+                }
+            except Exception:  # noqa: BLE001 - a USB hiccup mustn't crash the UI
+                self._seq_saved = {}
+            try:
+                self._dev.set_input_mode(1)              # PASSTHROUGH: clean steps
                 self._dev.set_control_mode(_SEQ_MODE[ch])
-                self._dev.set_closed_loop(True)
             except Exception:  # noqa: BLE001
                 pass
             self._seq_i = 0
-            self._send_seq()  # go to A immediately
+            self._send_seq()                             # point A = safe initial setpoint
+            try:
+                self._dev.set_closed_loop(True)          # arm only after a setpoint exists
+            except Exception:  # noqa: BLE001
+                pass
             self._seq_timer.start(max(50, int(self._seq_dwell.value() * 1000)))
             self._seq_btn.setText("Stop")
         else:
             self._seq_timer.stop()
+            self._stop_seq_safe()
             self._seq_btn.setText("Start")
+
+    def _stop_seq_safe(self):
+        """Command a mode-appropriate safe stop, then restore the saved modes.
+
+        Velocity -> zero speed; position -> hold the current position. Then
+        restore input_mode and control_mode, and if the axis was IDLE when the
+        sequence started, request IDLE again. Every device call is guarded so a
+        USB hiccup during teardown can't crash the UI."""
+        if self._dev is None:
+            return
+        ch = self._seq_chan.currentData()
+        try:
+            if ch == "vel":
+                self._dev.set_input_vel(0.0)
+            else:
+                self._dev.set_input_pos(self._dev.feedback()["pos"])
+        except Exception:  # noqa: BLE001
+            pass
+        saved = self._seq_saved or {}
+        try:
+            if "input_mode" in saved:
+                self._dev.set_input_mode(saved["input_mode"])
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            if "control_mode" in saved:
+                self._dev.set_control_mode(saved["control_mode"])
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            if saved.get("requested_state") == device_mod.IDLE:
+                self._dev.set_requested_state(device_mod.IDLE)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _on_dwell_changed(self, value):
+        """Retime a running sequence when the dwell spinbox changes."""
+        if self._seq_timer.isActive():
+            self._seq_timer.setInterval(max(50, int(value * 1000)))
 
     def _seq_tick(self):
         self._seq_i ^= 1

@@ -51,9 +51,12 @@ class MainWindow(QMainWindow):
         self._state_lbl = QLabel("State: —")
         self._err_lbl = QLabel("Error: —")
         self._err_lbl.setWordWrap(True)
-        self._estop_btn = QPushButton("E-STOP")
+        self._estop_btn = QPushButton("Disarm (IDLE)")
         self._estop_btn.setStyleSheet(
             "background-color:#c62828; color:white; font-weight:bold; padding:6px;")
+        self._estop_btn.setToolTip(
+            "Software disarm — requests IDLE. Not a hardware emergency stop; a "
+            "physical safety circuit is still required.")
         self._estop_btn.setEnabled(False)
         self._estop_btn.clicked.connect(self._estop)
         status.addWidget(self._state_lbl)

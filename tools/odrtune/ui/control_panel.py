@@ -126,7 +126,7 @@ class ControlPanel(QWidget):
         btns = QHBoxLayout()
         self._arm = QPushButton("Arm (closed loop)")
         self._idle = QPushButton("Idle")
-        self._stop = QPushButton("Stop (0)")
+        self._stop = QPushButton("Stop (hold)")
         for b in (self._arm, self._idle, self._stop):
             btns.addWidget(b)
         root.addLayout(btns)
@@ -218,11 +218,24 @@ class ControlPanel(QWidget):
         self._sync_combo(self._req, device_mod.IDLE)
 
     def _on_stop(self):
-        """Command zero setpoint for the active mode (leaves the axis armed)."""
+        """Command a mode-appropriate safe stop, leaving the axis armed.
+
+        Position -> HOLD the current position: read the current motor-frame
+        estimate (feedback()["pos"], already in motor revolutions / absolute
+        frame) and send it raw via set_input_pos -- do NOT apply the conversion
+        factor and do NOT touch the setpoint spinbox. Velocity -> zero speed;
+        Torque -> zero torque. (Previously this commanded setpoint 0, which in
+        position mode raced the motor to position 0.)"""
         if self._dev is None:
             return
-        self._setpoint.setValue(0.0)
-        self._send_setpoint()
+        mode = self._mode.currentData()
+        if mode == device_mod.CONTROL_MODE_POSITION:
+            self._guard(
+                lambda: self._dev.set_input_pos(self._dev.feedback()["pos"]))
+        elif mode == device_mod.CONTROL_MODE_VELOCITY:
+            self._guard(lambda: self._dev.set_input_vel(0.0))
+        elif mode == device_mod.CONTROL_MODE_TORQUE:
+            self._guard(lambda: self._dev.set_input_torque(0.0))
 
     # --- helpers ---
     def _update_units(self):

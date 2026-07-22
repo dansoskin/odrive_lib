@@ -86,6 +86,16 @@ Left-hand tabs:
   any field** for a hint on what it does and how it affects the loop, and expand
   the collapsible **Tuning guide** at the top for ODrive's guidelines plus tips.
 - **Config** — backup/restore config JSON and save to the ODrive's NVM.
+  **Backup** writes a schema-2 snapshot (every Tuning parameter + motion shaping
+  + control mode, plus device serial/firmware; ±∞ values are preserved).
+  **Restore** diffs the snapshot against the live device and shows a
+  **selective-apply dialog**: only *changed* items appear as checkboxes
+  (`key: current → target`); firmware/serial mismatches are flagged at the top
+  as (non-blocking) warnings; current-limit and motor-model parameters are
+  gated in a separate **Sensitive** section that is **unchecked by default**
+  and warns that wrong values can damage hardware. A second row offers ODrive's
+  host-side **native full backup/restore** of the whole device config tree
+  (needs the `odrive` package + a real device; unavailable otherwise).
 
 Each graph has a header showing its latest value(s) and three controls: **auto Y**
 (on by default — Y auto-scales to the data in the visible time window; turn off

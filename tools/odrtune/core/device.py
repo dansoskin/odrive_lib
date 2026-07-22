@@ -3,6 +3,11 @@ paths live here so a version change touches one file. Accepts either a real
 odrive device or a duck-typed fake."""
 from __future__ import annotations
 
+import logging
+import math
+
+_log = logging.getLogger(__name__)
+
 # AxisState ints (fw 0.6.x)
 IDLE = 1
 FULL_CALIBRATION_SEQUENCE = 3
@@ -93,6 +98,33 @@ def _get(obj, attr):
         return getattr(obj, attr)
     except Exception:  # noqa: BLE001
         return float("nan")
+
+
+def values_match(requested, actual) -> bool:
+    """True if a written value read back as expected.
+
+    Bools compare by equality; floats use relative tolerance 1e-4 (or absolute
+    1e-6), with inf==inf and nan==nan. Used for write read-back verification."""
+    if isinstance(requested, bool) or isinstance(actual, bool):
+        return bool(requested) == bool(actual)
+    try:
+        r = float(requested)
+        a = float(actual)
+    except (TypeError, ValueError):
+        return requested == actual
+    if math.isnan(r) or math.isnan(a):
+        return math.isnan(r) and math.isnan(a)
+    if math.isinf(r) or math.isinf(a):
+        return r == a
+    return abs(r - a) <= max(1e-4 * abs(r), 1e-6)
+
+
+def _fmt(x) -> str:
+    if isinstance(x, bool):
+        return str(x)
+    if isinstance(x, float):
+        return f"{x:g}"
+    return str(x)
 
 
 def connect(timeout: float = 15.0):
@@ -297,15 +329,41 @@ class Device:
                 pass
         return out
 
-    def set_tuning(self, **kw) -> None:
+    def set_tuning(self, **kw) -> dict:
+        """Attempt each write, read the attribute back, and report per key.
+
+        Returns ``{key: (ok, applied_or_msg)}``: ``ok=True`` with the read-back
+        value when it matches the request (per ``values_match``); ``ok=False``
+        with a short message when the parameter is unknown, the write raised,
+        the read-back raised, or the read-back value differs. Failures are
+        logged; nothing is silently swallowed."""
         targets = self._tuning_targets()
+        results: dict = {}
         for key, value in kw.items():
-            if key in targets:
-                obj, attr = targets[key]
-                try:
-                    setattr(obj, attr, value)
-                except Exception:  # noqa: BLE001
-                    pass
+            if key not in targets:
+                results[key] = (False, "unknown parameter")
+                _log.warning("set_tuning: unknown parameter %s", key)
+                continue
+            obj, attr = targets[key]
+            try:
+                setattr(obj, attr, value)
+            except Exception as e:  # noqa: BLE001
+                results[key] = (False, f"write error: {e}")
+                _log.warning("set_tuning: write %s failed: %s", key, e)
+                continue
+            try:
+                actual = getattr(obj, attr)
+            except Exception as e:  # noqa: BLE001
+                results[key] = (False, f"readback error: {e}")
+                _log.warning("set_tuning: readback %s failed: %s", key, e)
+                continue
+            if values_match(value, actual):
+                results[key] = (True, actual)
+            else:
+                msg = f"readback {_fmt(actual)} != {_fmt(value)}"
+                results[key] = (False, msg)
+                _log.warning("set_tuning: %s %s", key, msg)
+        return results
 
     # --- persistence ---
     def save(self) -> None:

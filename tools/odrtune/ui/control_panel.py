@@ -7,9 +7,10 @@ sets the ODrive control mode and picks which setpoint is sent, a setpoint box
 Stop shortcuts."""
 from __future__ import annotations
 
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
                                QComboBox, QDoubleSpinBox, QPushButton,
-                               QCheckBox, QGroupBox)
+                               QCheckBox, QGroupBox, QLabel)
 
 from core import device as device_mod
 from core import settings
@@ -39,14 +40,25 @@ _INPUT_MODES = [
     ("Torque ramp", 6),
 ]
 
-# ramp/trajectory parameter -> (label, unit suffix)
+# ramp/trajectory parameter -> (label, unit suffix, tooltip)
 _RAMP_PARAMS = {
-    "vel_ramp_rate": ("Vel ramp rate", " turns/s²"),
-    "torque_ramp_rate": ("Torque ramp rate", " Nm/s"),
-    "input_filter_bandwidth": ("Filter bandwidth", " Hz"),
-    "trap_vel_limit": ("Traj vel limit", " turns/s"),
-    "trap_accel_limit": ("Traj accel limit", " turns/s²"),
-    "trap_decel_limit": ("Traj decel limit", " turns/s²"),
+    "vel_ramp_rate": ("Vel ramp rate", " turns/s²",
+                      "Slew rate [turns/s²] applied to the velocity setpoint in "
+                      "VEL_RAMP mode. Lower = gentler acceleration."),
+    "torque_ramp_rate": ("Torque ramp rate", " Nm/s",
+                         "Slew rate [Nm/s] applied to the torque setpoint in "
+                         "TORQUE_RAMP mode. Lower = gentler torque changes."),
+    "input_filter_bandwidth": ("Filter bandwidth", " 1/s",
+                               "Bandwidth [1/s] of the second-order critically "
+                               "damped position-input filter used by POS_FILTER "
+                               "mode. Higher = less lag but passes more command "
+                               "stepping and noise."),
+    "trap_vel_limit": ("Traj vel limit", " turns/s",
+                       "Cruise velocity limit [turns/s] for TRAP_TRAJ moves."),
+    "trap_accel_limit": ("Traj accel limit", " turns/s²",
+                         "Acceleration limit [turns/s²] for TRAP_TRAJ moves."),
+    "trap_decel_limit": ("Traj decel limit", " turns/s²",
+                         "Deceleration limit [turns/s²] for TRAP_TRAJ moves."),
 }
 
 # which ramp params are relevant for each input mode value
@@ -63,7 +75,18 @@ class ControlPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._dev = None
+        self._ramp_pending = {}      # debounced motion-shaping writes
         root = QVBoxLayout(self)
+
+        # debounce motion-shaping writes (~250 ms) and config.json saves (~500 ms)
+        self._ramp_debounce = QTimer(self)
+        self._ramp_debounce.setSingleShot(True)
+        self._ramp_debounce.setInterval(250)
+        self._ramp_debounce.timeout.connect(self._flush_ramp)
+        self._conv_save_timer = QTimer(self)
+        self._conv_save_timer.setSingleShot(True)
+        self._conv_save_timer.setInterval(500)
+        self._conv_save_timer.timeout.connect(self._save_conversion)
 
         form = QFormLayout()
         self._req = QComboBox()
@@ -113,14 +136,19 @@ class ControlPanel(QWidget):
             self._imode.addItem(label, value)
         self._ramp_form.addRow("Input mode:", self._imode)
         self._ramp_rows = {}
-        for key, (label, suffix) in _RAMP_PARAMS.items():
+        for key, (label, suffix, tip) in _RAMP_PARAMS.items():
             spin = QDoubleSpinBox()
             spin.setRange(0.0, 100000.0)
             spin.setDecimals(3)
             spin.setSuffix(suffix)
-            spin.valueChanged.connect(lambda v, k=key: self._on_ramp(k, v))
+            spin.setToolTip(tip)
+            spin.valueChanged.connect(lambda _v, k=key: self._queue_ramp(k))
+            spin.editingFinished.connect(self._flush_ramp_now)
             self._ramp_rows[key] = spin
             self._ramp_form.addRow(label + ":", spin)
+        self._ramp_status = QLabel("")
+        self._ramp_status.setWordWrap(True)
+        self._ramp_form.addRow(self._ramp_status)
         root.addWidget(mgroup)
 
         btns = QHBoxLayout()
@@ -147,6 +175,10 @@ class ControlPanel(QWidget):
     # --- device lifecycle ---
     def set_device(self, dev):
         self._dev = dev
+        self._ramp_pending.clear()
+        self._ramp_debounce.stop()
+        self._ramp_status.setText("")
+        self._ramp_status.setStyleSheet("")
         if dev is None:                    # disconnected: disable all controls
             self._set_enabled(False)
             return
@@ -178,8 +210,49 @@ class ControlPanel(QWidget):
         self._update_ramp_visibility()
         self._guard(lambda: self._dev.set_input_mode(self._imode.currentData()))
 
-    def _on_ramp(self, key, value):
-        self._guard(lambda: self._dev.set_motion(**{key: value}))
+    def _queue_ramp(self, key):
+        """Queue a motion-shaping write and (re)start the debounce timer."""
+        if self._dev is None:
+            return
+        self._ramp_pending[key] = self._ramp_rows[key].value()
+        self._ramp_debounce.start()
+
+    def _flush_ramp_now(self):
+        self._ramp_debounce.stop()
+        self._flush_ramp()
+
+    def _flush_ramp(self):
+        """Write the pending motion params, then read them back and verify."""
+        if self._dev is None or not self._ramp_pending:
+            return
+        batch = dict(self._ramp_pending)
+        self._ramp_pending.clear()
+        try:
+            self._dev.set_motion(**batch)
+        except Exception:  # noqa: BLE001 - reported via the read-back below
+            pass
+        try:
+            mc = self._dev.get_motion_config()
+        except Exception as e:  # noqa: BLE001
+            self._ramp_status.setText(f"readback error: {e}")
+            self._ramp_status.setStyleSheet("color: red;")
+            return
+        msgs = []
+        ok_all = True
+        for key, requested in batch.items():
+            actual = mc.get(key)
+            if device_mod.values_match(requested, actual):
+                msgs.append(f"{key} ✓")
+            else:
+                ok_all = False
+                msgs.append(f"{key} FAILED: readback {actual} != {requested}")
+                spin = self._ramp_rows[key]
+                spin.blockSignals(True)
+                if actual is not None:
+                    spin.setValue(actual)
+                spin.blockSignals(False)
+        self._ramp_status.setText("   ".join(msgs))
+        self._ramp_status.setStyleSheet("" if ok_all else "color: red;")
 
     def _update_ramp_visibility(self):
         active = set(_MODE_PARAMS.get(self._imode.currentData(), []))
@@ -208,8 +281,12 @@ class ControlPanel(QWidget):
         return c if c else 1.0
 
     def _on_conv_changed(self, value):
+        # Debounce: save ~500 ms after the last change, not on every tick.
+        self._conv_save_timer.start()
+
+    def _save_conversion(self):
         cfg = settings.load()
-        cfg["conversion"] = value
+        cfg["conversion"] = self._conv.value()
         settings.save(cfg)
 
     def _on_arm(self):

@@ -52,7 +52,7 @@ Left-hand tabs:
   with the ramp/acceleration fields relevant to the chosen mode (velocity ramp
   rate, trajectory vel/accel/decel limits, filter bandwidth, torque ramp rate).
 - **Calibration** — run the full motor+encoder calibration and see the result.
-- **Tuning** — adjust every control-loop parameter independently, grouped
+- **Tuning** — adjust the key control-loop parameters independently, grouped
   inner-to-outer (scrollable): **feedback** (encoder + commutation-encoder
   bandwidth), **current loop** (bandwidth, soft/hard current max, current slew
   limit), **current feedforward** (cross-coupling wL, back-EMF, dI/dt enables for
@@ -63,7 +63,12 @@ Left-hand tabs:
   **back-and-forth sequence** (drive the motor between points A and B at a set
   dwell) so you can watch the repeated step on the right-hand graphs while you
   adjust gains. Tune inner-to-outer: feedback → current (+FF) → velocity →
-  position. Parameters your firmware doesn't expose are shown disabled. **Hover
+  position. Parameters your firmware doesn't expose are shown disabled. Edits are
+  debounced and every write is **verified by read-back** (a status line shows
+  `key ✓` or the read-back mismatch, and the field reverts on failure); a few
+  fields that change low-level current measurement (phase R/L, current hard max)
+  require the axis in **IDLE** and an explicit **Apply**, and fields that accept
+  infinity (vel limit, integrator limit) have an **∞** toggle. **Hover
   any field** for a hint on what it does and how it affects the loop, and expand
   the collapsible **Tuning guide** at the top for ODrive's guidelines plus tips.
 - **Config** — backup/restore config JSON and save to the ODrive's NVM.

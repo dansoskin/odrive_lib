@@ -16,14 +16,19 @@ include/odrive.h            # public API: odrive_t, odrive_status_t, feedback
                             #   struct, callback + send-fn typedefs, prototypes
 include/odrive_protocol.h   # fw 0.6.x CANSimple command IDs, CAN-ID macro,
                             #   enums, little-endian pack/unpack helpers
-src/odrive_comm.c           # init, send frame, RX decode/dispatch, SDO, status
+src/odrive_comm.c           # init, send frame, RX decode/dispatch, SDO, status,
+                            #   logger (odrive_set_logger/odrive_logf), fw check
 src/odrive_setpoints.c      # input pos/vel/torque, absolute/relative position
 src/odrive_control.c        # axis state, controller mode, limits, traj limits,
                             #   clear errors, estop, reboot
+src/odrive_periodic.c       # set cyclic CAN message rates (per message) via SDO
+src/odrive_endpoints_0_6.c  # GENERATED endpoint-id table (see tools/gen_endpoints.py)
 src/odrive_feedback.c       # RTR request getters (encoder, Iq, temp, bus, ...)
+tools/gen_endpoints.py      # flat_endpoints.json -> odrive_endpoints_0_6.{h,c}
+test/                       # host smoke tests (bash test/run.sh, needs gcc)
 examples/stm32_fdcan_canbus_wrapper.c   # HAL/canbus_wrapper glue (guarded out
                             #   of the host build with #ifdef ODRIVE_STM32_EXAMPLE)
-docs/superpowers/           # original design spec + implementation plans
+docs/superpowers/           # design spec + implementation plans
 ```
 
 ## Design rules (keep these)
@@ -56,10 +61,21 @@ CANSimple DBC).
   verification happens at bring-up in a consuming project.
 - The STM32 example needs the STM32 HAL + canbus_wrapper headers and is
   `#ifdef`-guarded so it is not part of a host compile.
-- `odrive_get_status_string()` uses `%f` → needs float-enabled printf.
+- `odrive_get_status_string()` and `odrive_logf()` use `%f`/`vsnprintf` → need
+  float-enabled printf.
+- **Periodic message rates** are written by SDO endpoint id, which changes per
+  firmware build. `src/odrive_endpoints_0_6.c` is GENERATED from a device's
+  `flat_endpoints.json` via `tools/gen_endpoints.py`; the committed placeholder
+  is all-zero (periodic calls return `ODRIVE_ERR_BAD_ARG` + log until generated).
+- **Logger** is optional (clpf-style `void(*)(const char*)`, `NULL` disables).
+  `odrive_init()` best-effort requests the fw version; a major/minor mismatch vs
+  the endpoint table is logged once via the RX path (async — not in init).
+- **Host tests:** `bash test/run.sh` (needs gcc); links `test/fake_endpoints.c`
+  in place of the generated table.
 
 ## Conventions
 
 - C: match surrounding style; keep files focused; commit messages
   `feat(c):` / `fix(c):` / `docs(c):`.
-- Don't add the Python tool back here — it belongs in odrive_tuner.
+- Don't add the tuning GUI (odrtune) back here — it belongs in odrive_tuner.
+  Small build/codegen scripts like `tools/gen_endpoints.py` are fine.

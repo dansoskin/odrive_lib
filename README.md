@@ -25,7 +25,8 @@ git submodule add https://github.com/dansoskin/odrive_lib.git third_party/odrive
 Add to your build:
 - **Include path:** `third_party/odrive_lib/include/`
 - **Sources:** `src/odrive_comm.c`, `src/odrive_setpoints.c`,
-  `src/odrive_control.c`, `src/odrive_feedback.c`
+  `src/odrive_control.c`, `src/odrive_feedback.c`, `src/odrive_periodic.c`,
+  `src/odrive_endpoints_0_6.c`
 
 No other dependencies (`<stdint.h>`, `<string.h>`, `<math.h>` only).
 
@@ -94,9 +95,10 @@ while (can_data_in_buffer()) {
 
 | File | Functions |
 |------|-----------|
-| `odrive_comm.c` | `odrive_init`, `odrive_on_can_rx`, SDO read/write, callback registration, status string |
+| `odrive_comm.c` | `odrive_init`, `odrive_on_can_rx`, SDO read/write, callback registration, status string, logger (`odrive_set_logger`), fw-version check |
 | `odrive_setpoints.c` | `odrive_set_input_pos` (+ff), `set_input_vel`, `set_input_torque`, absolute/relative position |
 | `odrive_control.c` | axis state, controller mode, limits, trajectory limits, clear errors, estop, reboot |
+| `odrive_periodic.c` | `odrive_set_msg_rate`, `odrive_set_all_msg_rates` (cyclic CAN message rates via SDO) |
 | `odrive_feedback.c` | RTR request getters (encoder, Iq, temperature, bus V/I, torques, powers, version, error) |
 
 Everything is declared in `include/odrive.h`; CAN command IDs and byte layouts
@@ -112,6 +114,32 @@ to a positive velocity command.
 
 `odrive_get_status_string()` uses `%f`, so on newlib-nano link with
 `-u _printf_float`.
+
+## Periodic messages & firmware
+
+The ODrive can send feedback frames cyclically. Set each message's period (ms,
+`0` disables) with `odrive_set_msg_rate(&od, ODRIVE_MSG_RATE_ENCODER, 10)` or
+apply all nine at once with `odrive_set_all_msg_rates()`. Rates take effect
+immediately; persist them to NVM with
+`odrive_reboot(&od, ODRIVE_REBOOT_SAVE_CONFIG)`.
+
+These are written over SDO by **endpoint id**, which changes with every firmware
+build. Generate the endpoint table from your device's `flat_endpoints.json`:
+
+```bash
+python tools/gen_endpoints.py flat_endpoints.json
+# -> include/odrive_endpoints_0_6.h + src/odrive_endpoints_0_6.c
+```
+
+Until you do, the committed placeholder leaves all ids `0`, so the periodic
+calls return `ODRIVE_ERR_BAD_ARG` and log. `odrive_init()` also requests the
+version; if the connected fw's major/minor doesn't match the generated table,
+the mismatch is reported through your logger:
+
+```c
+static void my_log(const char *msg) { printf("%s\n", msg); }
+odrive_set_logger(&od, "odrv0", my_log);   /* NULL disables */
+```
 
 ## Status
 

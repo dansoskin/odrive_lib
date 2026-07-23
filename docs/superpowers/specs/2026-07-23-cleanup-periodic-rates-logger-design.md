@@ -1,0 +1,189 @@
+# Design: tuning-param cleanup, per-message periodic rates, logger
+
+Date: 2026-07-23
+Repo: odrive_lib (C library, ODrive fw 0.6.x, CANSimple)
+
+## Goal
+
+Keep odrive_lib focused on **commanding motion**. Remove control-loop *tuning*
+parameters (they belong in odrive_tuner), and add the ability to configure the
+ODrive's **cyclic CAN message rates** per message. Add a minimal **logger** so
+the library can report problems (modeled on the clpf logger). Use the logger to
+warn when the connected ODrive's firmware version doesn't match the hardcoded
+endpoint table.
+
+## Decisions (agreed)
+
+1. **Removal scope: gains only.** Remove `odrive_set_pos_gain`,
+   `odrive_set_vel_gains`, `odrive_set_traj_inertia`. Keep `odrive_set_limits`,
+   `odrive_set_controller_mode`, and the trajectory vel/accel limits — a motion
+   library legitimately needs those to command trap-traj moves and set safety
+   envelopes.
+2. **Periodic API granularity: per-message**, plus an all-at-once convenience
+   wrapper.
+3. **Endpoint IDs: hardcoded** for a pinned fw 0.6.x build, in a new header.
+4. **FW pin: latest stable 0.6.x** (exact build number confirmed when the real
+   endpoint IDs are pulled — see Dependencies).
+5. **Version check: asynchronous.** `odrive_init` best-effort sends a
+   `GET_VERSION` request; compatibility is evaluated when the version reply is
+   decoded and logged on mismatch (an async CAN library cannot read it
+   synchronously inside init).
+6. **Logger: mirror clpf** — a single `void(*)(const char*)` sink, a `name`
+   label, no log levels, `NULL` disables.
+
+## Part 1 — Remove tuning parameters
+
+Delete from the codebase:
+
+- `include/odrive.h`: prototypes `odrive_set_pos_gain`, `odrive_set_vel_gains`,
+  `odrive_set_traj_inertia`.
+- `src/odrive_control.c`: the three function bodies.
+- `include/odrive_protocol.h`: command IDs `ODRIVE_CMD_SET_POS_GAIN` (0x1A),
+  `ODRIVE_CMD_SET_VEL_GAINS` (0x1B), `ODRIVE_CMD_SET_TRAJ_INERTIA` (0x13).
+- Update `README.md` (API-groups table + "what it does" text) and `CLAUDE.md`
+  (odrive_control.c file description) to drop "gains".
+
+Kept: `SET_TRAJ_VEL_LIMIT` (0x11), `SET_TRAJ_ACCEL_LIMITS` (0x12),
+`SET_LIMITS` (0x0F), `SET_CONTROLLER_MODE` (0x0B).
+
+## Part 2 — Logger (clpf-style)
+
+In `include/odrive.h`:
+
+```c
+typedef void (*odrive_log_fn_t)(const char *message);   /* NULL = no logging */
+void odrive_set_logger(odrive_t *od, const char *name, odrive_log_fn_t log_fn);
+```
+
+- `odrive_t` gains two fields: `const char *log_name; odrive_log_fn_t log_fn;`.
+- Internal helper in `odrive_comm.c`:
+  `static void odrive_logf(odrive_t *od, const char *fmt, ...)` — no-op if
+  `log_fn` is NULL; otherwise `vsnprintf` into a small fixed stack buffer
+  (e.g. 96 bytes) prefixed with `log_name` (so multiple drives are
+  distinguishable) and call `log_fn`.
+- Caveat documented: `vsnprintf` with `%f`/`%u` needs a full printf (same
+  `-u _printf_float` note that already applies to `odrive_get_status_string`).
+- No log levels — matches clpf's single-level informational sink.
+
+## Part 3 — Hardcoded endpoint table + FW version check
+
+New header `include/odrive_endpoints_0_6.h`:
+
+```c
+/* Endpoint IDs captured from ODrive fw 0.6.x flat_endpoints.json (build pinned
+ * below). WARNING: endpoint IDs can shift between 0.6.x patch builds — verify
+ * against the flat_endpoints.json for the firmware you actually run. */
+#define ODRIVE_FW_EXPECTED_MAJOR   0
+#define ODRIVE_FW_EXPECTED_MINOR   6
+#define ODRIVE_FW_ENDPOINTS_BUILD  "0.6.x"   /* exact build string filled at impl time */
+
+/* Indexed by odrive_msg_rate_t. A value of 0 = "unknown / not populated". */
+static const uint16_t ODRIVE_MSG_RATE_ENDPOINT[ODRIVE_MSG_RATE_COUNT] = {
+    /* real IDs from flat_endpoints.json, in odrive_msg_rate_t order */
+};
+```
+
+In `include/odrive_protocol.h`, add the message-rate enum (order mirrors the
+existing getters/callbacks):
+
+```c
+typedef enum {
+    ODRIVE_MSG_RATE_VERSION = 0,
+    ODRIVE_MSG_RATE_HEARTBEAT,
+    ODRIVE_MSG_RATE_ENCODER,
+    ODRIVE_MSG_RATE_IQ,
+    ODRIVE_MSG_RATE_ERROR,
+    ODRIVE_MSG_RATE_TEMPERATURE,
+    ODRIVE_MSG_RATE_BUS_VOLTAGE,   /* firmware bus_voltage_msg_rate_ms; maps to the bus_vi getter */
+    ODRIVE_MSG_RATE_TORQUES,
+    ODRIVE_MSG_RATE_POWERS,
+    ODRIVE_MSG_RATE_COUNT
+} odrive_msg_rate_t;
+```
+
+Firmware parameters targeted (fw 0.6.x `axis0.config.can.*`):
+`version_msg_rate_ms`, `heartbeat_msg_rate_ms`, `encoder_msg_rate_ms`,
+`iq_msg_rate_ms`, `error_msg_rate_ms`, `temperature_msg_rate_ms`,
+`bus_voltage_msg_rate_ms`, `torques_msg_rate_ms`, `powers_msg_rate_ms`.
+
+### Version check flow (async)
+
+- `odrive_init` calls `odrive_request_version(od)` best-effort (ignore send
+  failure — the bus may not be up; the host can request again later).
+- In `odrive_on_can_rx`, the existing `GET_VERSION` decode branch, after
+  populating `fb->fw_version_*`, compares `fw_version_major/minor` against
+  `ODRIVE_FW_EXPECTED_MAJOR/MINOR`. On mismatch it logs once (guarded by a
+  `bool fw_checked` flag in `odrive_t` to avoid spam), e.g.:
+  `"odrv0: fw 0.5.x != endpoint table 0.6.x; msg-rate endpoints may be wrong"`.
+- The check is a no-op when no logger is registered.
+
+## Part 4 — Periodic rate API
+
+New file `src/odrive_periodic.c`. In `include/odrive.h`:
+
+```c
+/* Set one cyclic message's period in ms (0 = disable). */
+odrive_status_t odrive_set_msg_rate(odrive_t *od, odrive_msg_rate_t msg,
+                                    uint32_t rate_ms);
+
+/* Apply all nine rates in one call. rate_ms[i] == 0 disables message i. */
+odrive_status_t odrive_set_all_msg_rates(odrive_t *od,
+                                         const uint32_t rate_ms[ODRIVE_MSG_RATE_COUNT]);
+```
+
+Behavior:
+
+- `odrive_set_msg_rate` validates `od` and `msg < ODRIVE_MSG_RATE_COUNT`, looks
+  up `ODRIVE_MSG_RATE_ENDPOINT[msg]`; if that endpoint id is 0 it logs
+  ("rate endpoint for msg N not populated") and returns `ODRIVE_ERR_BAD_ARG`;
+  otherwise calls `odrive_write_sdo(od, endpoint, rate_ms)`.
+- `odrive_set_all_msg_rates` loops all messages; skips entries whose endpoint id
+  is 0 (logged); returns the first send error, else `ODRIVE_OK`.
+- Changes take effect immediately but persist to NVM only if the caller
+  subsequently issues `odrive_reboot(od, ODRIVE_REBOOT_SAVE_CONFIG)`
+  (documented; not automated).
+
+## Data flow
+
+```
+host                       odrive_lib                        ODrive
+  odrive_init() ---------> stores send/ctx/logger
+                           odrive_request_version() --RTR--> GET_VERSION
+  odrive_on_can_rx() <---------------------------- version reply
+                           decode + compare fw -> logf() on mismatch
+  odrive_set_msg_rate() -> write_sdo(endpoint,rate) --RxSdo--> config.can.*_msg_rate_ms
+```
+
+## Testing (host build)
+
+- Compile-only check that the removed symbols are gone and everything still
+  builds (add `src/odrive_periodic.c` to the source list).
+- Stub `send` capturing frames:
+  - `odrive_set_msg_rate` emits an RxSdo (cmd 0x04, write opcode) to the correct
+    endpoint id with the correct little-endian value.
+  - endpoint id 0 → `ODRIVE_ERR_BAD_ARG`, no frame sent.
+  - `odrive_set_all_msg_rates` emits one frame per populated entry.
+- Logger: a capturing `log_fn` receives the mismatch message when a crafted
+  `GET_VERSION` frame with major=0/minor=5 is fed to `odrive_on_can_rx`, and
+  receives nothing when major/minor match.
+- Real CAN verification remains a hardware bring-up item (repo status).
+
+## Dependencies / open risk
+
+- **Real endpoint IDs.** `flat_endpoints.json` is not committed to the ODrive
+  repo — odrivetool downloads it per device. The hardcoded table MUST be filled
+  with real IDs from the pinned build before the periodic API is functional.
+  Sourcing plan, in order:
+  1. Pull `flat_endpoints.json` for the latest stable 0.6.x from a public
+     source (release asset / odrivetool cache) if reachable.
+  2. Otherwise, the user provides the `flat_endpoints.json` from their device
+     (odrivetool caches it; or `odrv._dump_...`). We fill in the real IDs and
+     set `ODRIVE_FW_ENDPOINTS_BUILD` to that exact version.
+  No endpoint numbers will be fabricated; the table ships only with verified
+  values (or explicitly 0 = unpopulated until provided).
+
+## Out of scope
+
+- Motor/controller tuning (gains, calibration tuning) — lives in odrive_tuner.
+- Deleting the stray gitignored `tools/odrtune/**/*.pyc` caches (local-only,
+  untracked; optional housekeeping, not part of this change).

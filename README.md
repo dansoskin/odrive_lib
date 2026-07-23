@@ -124,10 +124,13 @@ immediately; persist them to NVM with
 `odrive_reboot(&od, ODRIVE_REBOOT_SAVE_CONFIG)`.
 
 These are written over SDO by **endpoint id**, which changes with every firmware
-build. Generate the endpoint table from your device's `flat_endpoints.json`:
+build. Generate the endpoint table by connecting to your ODrive over USB (needs
+the `odrive` Python package); it downloads `flat_endpoints.json` and emits the C
+files:
 
 ```bash
-python tools/gen_endpoints.py flat_endpoints.json
+python tools/gen_endpoints.py                      # connect, download, generate
+python tools/gen_endpoints.py flat_endpoints.json  # or offline from an existing json
 # -> include/odrive_endpoints_0_6.h + src/odrive_endpoints_0_6.c
 ```
 

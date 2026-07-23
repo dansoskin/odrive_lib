@@ -4,25 +4,28 @@ Developer utilities for odrive_lib. Not compiled into the library.
 
 ## gen_endpoints.py
 
-Generates `include/odrive_endpoints_0_6.h` (the SDO endpoint table the periodic
-message-rate API consumes) from an ODrive `flat_endpoints.json`.
-
-ODrive endpoint ids change with every firmware/hardware build, so they are
-generated from your device's json rather than hardcoded by hand.
+Generates the SDO endpoint table the periodic message-rate API consumes:
+`include/odrive_endpoints_0_6.h` (expected-fw macros + `extern` decl) and
+`src/odrive_endpoints_0_6.c` (the id array). ODrive endpoint ids change with
+every firmware/hardware build, so they are read from your device rather than
+hardcoded by hand.
 
 ```bash
-# get flat_endpoints.json from your ODrive (odrivetool caches it, or export it
-# for your firmware build), then:
-python tools/gen_endpoints.py flat_endpoints.json
-# -> writes include/odrive_endpoints_0_6.h  (expected-fw macros + extern decl)
-#           src/odrive_endpoints_0_6.c       (the endpoint-id array definition)
+# Connect over USB, download the endpoint table to flat_endpoints.json, generate:
+python tools/gen_endpoints.py
 
-# if the json has no version field:
-python tools/gen_endpoints.py flat_endpoints.json --fw-version 0.6.11
+# pick a specific device when several are connected:
+python tools/gen_endpoints.py --serial 0123ABCD
+
+# offline: use a flat_endpoints.json you already have:
+python tools/gen_endpoints.py flat_endpoints.json
+
+# override the version string if it can't be read:
+python tools/gen_endpoints.py --fw-version 0.6.11
 ```
 
-Add `src/odrive_endpoints_0_6.c` to your build. Override output paths with
-`--header` / `--source` if needed.
-
-Requires Python 3.9+ (standard library only). Regenerate whenever you change the
-firmware on the target ODrive.
+Device mode needs the `odrive` Python package (`pip install odrive`); offline
+mode is stdlib-only (Python 3.9+). The downloaded `flat_endpoints.json` is saved
+in the repo (change with `--save-json`) as a provenance record. Add
+`src/odrive_endpoints_0_6.c` to your firmware build. Regenerate whenever you
+flash new firmware to the target ODrive.

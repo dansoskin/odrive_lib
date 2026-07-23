@@ -32,15 +32,12 @@
 #define ODRIVE_CMD_SET_LIMITS             0x0Fu
 #define ODRIVE_CMD_SET_TRAJ_VEL_LIMIT     0x11u
 #define ODRIVE_CMD_SET_TRAJ_ACCEL_LIMITS  0x12u
-#define ODRIVE_CMD_SET_TRAJ_INERTIA       0x13u
 #define ODRIVE_CMD_GET_IQ                 0x14u
 #define ODRIVE_CMD_GET_TEMPERATURE        0x15u
 #define ODRIVE_CMD_REBOOT                 0x16u
 #define ODRIVE_CMD_GET_BUS_VOLTAGE_CURRENT 0x17u
 #define ODRIVE_CMD_CLEAR_ERRORS           0x18u
 #define ODRIVE_CMD_SET_ABSOLUTE_POSITION  0x19u
-#define ODRIVE_CMD_SET_POS_GAIN           0x1Au
-#define ODRIVE_CMD_SET_VEL_GAINS          0x1Bu
 #define ODRIVE_CMD_GET_TORQUES            0x1Cu
 #define ODRIVE_CMD_GET_POWERS             0x1Du
 

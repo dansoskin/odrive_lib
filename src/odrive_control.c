@@ -35,24 +35,6 @@ odrive_status_t odrive_set_limits(odrive_t *od, float vel_limit, float current_l
     return odrive_send_frame(od, ODRIVE_CMD_SET_LIMITS, p, 8, false);
 }
 
-odrive_status_t odrive_set_pos_gain(odrive_t *od, float pos_gain)
-{
-    if (!od) return ODRIVE_ERR_BAD_ARG;
-    uint8_t p[4] = {0};
-    odrive_pack_f32(&p[0], pos_gain);    /* raw */
-    return odrive_send_frame(od, ODRIVE_CMD_SET_POS_GAIN, p, 4, false);
-}
-
-odrive_status_t odrive_set_vel_gains(odrive_t *od, float vel_gain,
-                                     float vel_integrator_gain)
-{
-    if (!od) return ODRIVE_ERR_BAD_ARG;
-    uint8_t p[8] = {0};
-    odrive_pack_f32(&p[0], vel_gain);            /* raw */
-    odrive_pack_f32(&p[4], vel_integrator_gain); /* raw */
-    return odrive_send_frame(od, ODRIVE_CMD_SET_VEL_GAINS, p, 8, false);
-}
-
 odrive_status_t odrive_set_traj_vel_limit(odrive_t *od, float vel_limit)
 {
     if (!od) return ODRIVE_ERR_BAD_ARG;
@@ -68,14 +50,6 @@ odrive_status_t odrive_set_traj_accel_limits(odrive_t *od, float accel, float de
     odrive_pack_f32(&p[0], accel / fabsf(od->motor_conv));
     odrive_pack_f32(&p[4], decel / fabsf(od->motor_conv));
     return odrive_send_frame(od, ODRIVE_CMD_SET_TRAJ_ACCEL_LIMITS, p, 8, false);
-}
-
-odrive_status_t odrive_set_traj_inertia(odrive_t *od, float inertia)
-{
-    if (!od) return ODRIVE_ERR_BAD_ARG;
-    uint8_t p[4] = {0};
-    odrive_pack_f32(&p[0], inertia);     /* raw */
-    return odrive_send_frame(od, ODRIVE_CMD_SET_TRAJ_INERTIA, p, 4, false);
 }
 
 odrive_status_t odrive_clear_errors(odrive_t *od)

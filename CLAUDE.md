@@ -18,7 +18,7 @@ include/odrive_protocol.h   # fw 0.6.x CANSimple command IDs, CAN-ID macro,
                             #   enums, little-endian pack/unpack helpers
 src/odrive_comm.c           # init, send frame, RX decode/dispatch, SDO, status
 src/odrive_setpoints.c      # input pos/vel/torque, absolute/relative position
-src/odrive_control.c        # axis state, controller mode, limits, gains, traj,
+src/odrive_control.c        # axis state, controller mode, limits, traj limits,
                             #   clear errors, estop, reboot
 src/odrive_feedback.c       # RTR request getters (encoder, Iq, temp, bus, ...)
 examples/stm32_fdcan_canbus_wrapper.c   # HAL/canbus_wrapper glue (guarded out

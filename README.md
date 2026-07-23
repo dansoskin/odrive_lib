@@ -12,7 +12,7 @@ submodule**.
 
 You give the library one **send callback** (transmit a CAN frame) and feed it
 received frames via `odrive_on_can_rx()`. It builds the ODrive CANSimple frames
-for you (setpoints, limits, gains, trajectory, calibration state, etc.) and
+for you (setpoints, limits, trajectory limits, calibration state, etc.) and
 decodes incoming feedback (position/velocity, Iq, temperature, bus V/I, torque,
 errors, heartbeat) into a struct you read.
 
@@ -96,7 +96,7 @@ while (can_data_in_buffer()) {
 |------|-----------|
 | `odrive_comm.c` | `odrive_init`, `odrive_on_can_rx`, SDO read/write, callback registration, status string |
 | `odrive_setpoints.c` | `odrive_set_input_pos` (+ff), `set_input_vel`, `set_input_torque`, absolute/relative position |
-| `odrive_control.c` | axis state, controller mode, limits, pos/vel gains, trajectory params, clear errors, estop, reboot |
+| `odrive_control.c` | axis state, controller mode, limits, trajectory limits, clear errors, estop, reboot |
 | `odrive_feedback.c` | RTR request getters (encoder, Iq, temperature, bus V/I, torques, powers, version, error) |
 
 Everything is declared in `include/odrive.h`; CAN command IDs and byte layouts

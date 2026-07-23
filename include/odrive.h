@@ -121,12 +121,8 @@ odrive_status_t odrive_set_controller_mode(odrive_t *od,
                                            odrive_control_mode_t control_mode,
                                            odrive_input_mode_t input_mode);
 odrive_status_t odrive_set_limits(odrive_t *od, float vel_limit, float current_limit);
-odrive_status_t odrive_set_pos_gain(odrive_t *od, float pos_gain);
-odrive_status_t odrive_set_vel_gains(odrive_t *od, float vel_gain,
-                                     float vel_integrator_gain);
 odrive_status_t odrive_set_traj_vel_limit(odrive_t *od, float vel_limit);
 odrive_status_t odrive_set_traj_accel_limits(odrive_t *od, float accel, float decel);
-odrive_status_t odrive_set_traj_inertia(odrive_t *od, float inertia);
 odrive_status_t odrive_clear_errors(odrive_t *od);
 odrive_status_t odrive_estop(odrive_t *od);
 odrive_status_t odrive_reboot(odrive_t *od, odrive_reboot_action_t action);

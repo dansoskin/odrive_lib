@@ -47,10 +47,22 @@ static void test_msg_rate_enum(void) {
     CHECK(ODRIVE_MSG_RATE_VERSION == 0, "version is first slot");
 }
 
+static void test_logger(void) {
+    odrive_t od;
+    odrive_init(&od, cap_send, NULL, 0, 1.0f, false);
+    log_reset();
+    odrive_logf(&od, "no sink %d", 1);       /* logger not set yet */
+    CHECK(g_nlog == 0, "logf is a no-op without a sink");
+    odrive_set_logger(&od, "odrv0", cap_log);
+    odrive_logf(&od, "x=%d", 5);
+    CHECK(g_nlog == 1, "logf emits one line");
+    CHECK(strcmp(g_log[0], "odrv0: x=5") == 0, "logf prefixes name and formats");
+}
+
 int main(void) {
-    (void)cap_log; (void)log_reset;  /* used from Task 4 onward */
     test_setpoint_frame();
     test_msg_rate_enum();
+    test_logger();
     printf(g_fail ? "\n%d CHECK(s) FAILED\n" : "\nALL CHECKS PASSED\n", g_fail);
     return g_fail ? 1 : 0;
 }

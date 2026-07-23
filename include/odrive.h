@@ -22,6 +22,9 @@ typedef enum {
 typedef bool (*odrive_send_fn)(void *ctx, uint32_t can_id,
                                const uint8_t *data, uint8_t len, bool rtr);
 
+/* Logger sink: receives a fully-formatted line. NULL disables logging. */
+typedef void (*odrive_log_fn_t)(const char *message);
+
 typedef struct {
     uint32_t axis_error;
     uint8_t  axis_state;
@@ -83,6 +86,10 @@ typedef struct odrive {
         odrive_cb_slot_t version;
         odrive_cb_slot_t txsdo;
     } cb;
+
+    const char     *log_name;   /* prefix for log lines (may be NULL) */
+    odrive_log_fn_t log_fn;     /* NULL => logging disabled */
+    bool            fw_checked; /* set once the fw version has been evaluated */
 } odrive_t;
 
 /* ---- init & comm (odrive_comm.c) ---- */
@@ -93,6 +100,7 @@ void odrive_on_can_rx(odrive_t *od, uint32_t can_id,
 odrive_status_t odrive_write_sdo(odrive_t *od, uint16_t endpoint_id, uint32_t data);
 odrive_status_t odrive_read_sdo(odrive_t *od, uint16_t endpoint_id);
 int  odrive_get_status_string(odrive_t *od, char *buf, size_t buf_len);
+void odrive_set_logger(odrive_t *od, const char *name, odrive_log_fn_t log_fn);
 
 /* callback registration */
 void odrive_on_heartbeat(odrive_t *od, odrive_cb_t fn, void *user);
@@ -140,6 +148,8 @@ odrive_status_t odrive_request_powers(odrive_t *od);
 /* ---- internal (defined in odrive_comm.c, used by other modules) ---- */
 odrive_status_t odrive_send_frame(odrive_t *od, uint8_t cmd,
                                   const uint8_t *data, uint8_t len, bool rtr);
+/* Internal: formatted log via od->log_fn (no-op if unset). Used across modules. */
+void odrive_logf(odrive_t *od, const char *fmt, ...);
 
 #ifdef __cplusplus
 }

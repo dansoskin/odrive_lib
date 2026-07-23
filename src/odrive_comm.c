@@ -1,5 +1,6 @@
 #include "odrive.h"
 #include <stdio.h>
+#include <stdarg.h>
 
 void odrive_init(odrive_t *od, odrive_send_fn send, void *ctx,
                  uint8_t node_id, float conversion, bool invert)
@@ -19,6 +20,29 @@ odrive_status_t odrive_send_frame(odrive_t *od, uint8_t cmd,
     if (!od || !od->send) return ODRIVE_ERR_BAD_ARG;
     uint32_t id = ODRIVE_CAN_ID(od->node_id, cmd);
     return od->send(od->ctx, id, data, len, rtr) ? ODRIVE_OK : ODRIVE_ERR_SEND;
+}
+
+void odrive_set_logger(odrive_t *od, const char *name, odrive_log_fn_t log_fn)
+{
+    if (!od) return;
+    od->log_name = name;
+    od->log_fn = log_fn;
+}
+
+void odrive_logf(odrive_t *od, const char *fmt, ...)
+{
+    if (!od || !od->log_fn) return;
+    char buf[96];
+    int n = 0;
+    if (od->log_name) {
+        n = snprintf(buf, sizeof buf, "%s: ", od->log_name);
+        if (n < 0 || (size_t)n >= sizeof buf) n = 0;
+    }
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf + n, sizeof buf - (size_t)n, fmt, ap);
+    va_end(ap);
+    od->log_fn(buf);
 }
 
 static void fire(const odrive_cb_slot_t *s, odrive_t *od)

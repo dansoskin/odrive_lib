@@ -103,6 +103,41 @@ static void test_init_requests_version(void) {
           "init sends a GET_VERSION RTR request");
 }
 
+static void test_set_msg_rate_write(void) {
+    odrive_t od;
+    odrive_init(&od, cap_send, NULL, 0, 1.0f, false);
+    tx_reset();
+    odrive_status_t rc = odrive_set_msg_rate(&od, ODRIVE_MSG_RATE_HEARTBEAT, 50u);
+    CHECK(rc == ODRIVE_OK, "set_msg_rate returns OK for populated endpoint");
+    CHECK(g_ntx == 1, "set_msg_rate emits one frame");
+    CHECK(ODRIVE_ID_CMD(g_tx[0].id) == ODRIVE_CMD_RXSDO, "set_msg_rate uses RxSdo");
+    CHECK(g_tx[0].data[0] == 0x01, "RxSdo write opcode");
+    CHECK(odrive_unpack_u16(&g_tx[0].data[1]) == 501u, "RxSdo endpoint id 501");
+    CHECK(odrive_unpack_u32(&g_tx[0].data[4]) == 50u, "RxSdo value 50");
+}
+
+static void test_set_msg_rate_unpopulated(void) {
+    odrive_t od;
+    odrive_init(&od, cap_send, NULL, 0, 1.0f, false);
+    odrive_set_logger(&od, "odrv0", cap_log);
+    tx_reset(); log_reset();
+    odrive_status_t rc = odrive_set_msg_rate(&od, ODRIVE_MSG_RATE_POWERS, 50u);
+    CHECK(rc == ODRIVE_ERR_BAD_ARG, "unpopulated endpoint returns BAD_ARG");
+    CHECK(g_ntx == 0, "unpopulated endpoint sends nothing");
+    CHECK(g_nlog == 1 && strstr(g_log[0], "unpopulated") != NULL, "unpopulated is logged");
+}
+
+static void test_set_all_msg_rates(void) {
+    odrive_t od;
+    odrive_init(&od, cap_send, NULL, 0, 1.0f, false);
+    tx_reset();
+    uint32_t rates[ODRIVE_MSG_RATE_COUNT];
+    for (int i = 0; i < ODRIVE_MSG_RATE_COUNT; ++i) rates[i] = 100u;
+    odrive_status_t rc = odrive_set_all_msg_rates(&od, rates);
+    CHECK(rc == ODRIVE_OK, "set_all returns OK");
+    CHECK(g_ntx == 8, "set_all emits 8 frames (POWERS skipped)");
+}
+
 int main(void) {
     test_setpoint_frame();
     test_msg_rate_enum();
@@ -111,6 +146,9 @@ int main(void) {
     test_init_requests_version();
     test_version_mismatch_logs_once();
     test_version_match_silent();
+    test_set_msg_rate_write();
+    test_set_msg_rate_unpopulated();
+    test_set_all_msg_rates();
     printf(g_fail ? "\n%d CHECK(s) FAILED\n" : "\nALL CHECKS PASSED\n", g_fail);
     return g_fail ? 1 : 0;
 }

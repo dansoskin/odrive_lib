@@ -122,6 +122,16 @@ odrive_status_t odrive_set_input_torque(odrive_t *od, float torque);
 odrive_status_t odrive_set_absolute_position(odrive_t *od, float pos);
 odrive_status_t odrive_set_relative_pos(odrive_t *od, float delta);
 
+/* ---- periodic (cyclic) CAN message rates (odrive_periodic.c) ----
+ * Configures the ODrive's config.can.*_msg_rate_ms over SDO. rate_ms = 0
+ * disables that message. Changes are live immediately; persist to NVM with
+ * odrive_reboot(od, ODRIVE_REBOOT_SAVE_CONFIG). Endpoint ids come from
+ * odrive_endpoints_0_6.h (generate with tools/gen_endpoints.py). */
+odrive_status_t odrive_set_msg_rate(odrive_t *od, odrive_msg_rate_t msg,
+                                    uint32_t rate_ms);
+odrive_status_t odrive_set_all_msg_rates(odrive_t *od,
+                                         const uint32_t rate_ms[ODRIVE_MSG_RATE_COUNT]);
+
 /* ---- control/config (odrive_control.c) ---- */
 odrive_status_t odrive_set_axis_state(odrive_t *od, odrive_axis_state_t state);
 odrive_status_t odrive_set_closed_loop(odrive_t *od, bool enable); /* closed-loop vs idle */

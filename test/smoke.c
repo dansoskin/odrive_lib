@@ -42,9 +42,15 @@ static void test_setpoint_frame(void) {
     CHECK(g_tx[0].len == 4 && g_tx[0].rtr == false, "input_torque 4-byte data frame");
 }
 
+static void test_msg_rate_enum(void) {
+    CHECK(ODRIVE_MSG_RATE_COUNT == 9, "nine cyclic message kinds");
+    CHECK(ODRIVE_MSG_RATE_VERSION == 0, "version is first slot");
+}
+
 int main(void) {
     (void)cap_log; (void)log_reset;  /* used from Task 4 onward */
     test_setpoint_frame();
+    test_msg_rate_enum();
     printf(g_fail ? "\n%d CHECK(s) FAILED\n" : "\nALL CHECKS PASSED\n", g_fail);
     return g_fail ? 1 : 0;
 }

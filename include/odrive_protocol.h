@@ -78,6 +78,21 @@ typedef enum {
     ODRIVE_REBOOT_ERASE_CONFIG = 2
 } odrive_reboot_action_t;
 
+/* Cyclic (periodic) CAN message kinds; order mirrors the feedback getters.
+ * Indexes the endpoint table in odrive_endpoints_0_6.h. */
+typedef enum {
+    ODRIVE_MSG_RATE_VERSION = 0,
+    ODRIVE_MSG_RATE_HEARTBEAT,
+    ODRIVE_MSG_RATE_ENCODER,
+    ODRIVE_MSG_RATE_IQ,
+    ODRIVE_MSG_RATE_ERROR,
+    ODRIVE_MSG_RATE_TEMPERATURE,
+    ODRIVE_MSG_RATE_BUS_VOLTAGE,   /* fw bus_voltage_msg_rate_ms; maps to the bus_vi getter */
+    ODRIVE_MSG_RATE_TORQUES,
+    ODRIVE_MSG_RATE_POWERS,
+    ODRIVE_MSG_RATE_COUNT
+} odrive_msg_rate_t;
+
 /* Little-endian pack/unpack helpers (host + ODrive are little-endian). */
 static inline void odrive_pack_f32(uint8_t *dst, float v)   { memcpy(dst, &v, 4); }
 static inline void odrive_pack_u32(uint8_t *dst, uint32_t v){ memcpy(dst, &v, 4); }

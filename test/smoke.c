@@ -1,5 +1,6 @@
 /* Host smoke tests for odrive_lib. No framework: a CHECK macro + captured TX. */
 #include "odrive.h"
+#include "odrive_endpoints_0_6.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -59,10 +60,18 @@ static void test_logger(void) {
     CHECK(strcmp(g_log[0], "odrv0: x=5") == 0, "logf prefixes name and formats");
 }
 
+static void test_endpoint_fixture(void) {
+    CHECK(ODRIVE_MSG_RATE_ENDPOINT[ODRIVE_MSG_RATE_HEARTBEAT] == 501u,
+          "fixture heartbeat endpoint linked");
+    CHECK(ODRIVE_MSG_RATE_ENDPOINT[ODRIVE_MSG_RATE_POWERS] == 0u,
+          "fixture powers endpoint is unpopulated");
+}
+
 int main(void) {
     test_setpoint_frame();
     test_msg_rate_enum();
     test_logger();
+    test_endpoint_fixture();
     printf(g_fail ? "\n%d CHECK(s) FAILED\n" : "\nALL CHECKS PASSED\n", g_fail);
     return g_fail ? 1 : 0;
 }

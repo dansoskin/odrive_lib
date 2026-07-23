@@ -16,6 +16,7 @@ venv/
 *.elf
 *.bin
 test/smoke
+test/smoke.exe
 
 # Editor/OS
 .vscode/

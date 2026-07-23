@@ -67,11 +67,50 @@ static void test_endpoint_fixture(void) {
           "fixture powers endpoint is unpopulated");
 }
 
+static void feed_version(odrive_t *od, uint8_t major, uint8_t minor) {
+    uint8_t d[8] = {0};
+    d[4] = major; d[5] = minor; d[6] = 0;   /* proto/hw fields unused here */
+    odrive_on_can_rx(od, ODRIVE_CAN_ID(od->node_id, ODRIVE_CMD_GET_VERSION), d, 8);
+}
+
+static void test_version_mismatch_logs_once(void) {
+    odrive_t od;
+    odrive_init(&od, cap_send, NULL, 0, 1.0f, false);   /* init sends a version request */
+    odrive_set_logger(&od, "odrv0", cap_log);
+    log_reset();
+    feed_version(&od, 0, 5);
+    CHECK(g_nlog == 1, "mismatch logs once");
+    CHECK(strstr(g_log[0], "endpoint table") != NULL, "mismatch message mentions endpoint table");
+    feed_version(&od, 0, 5);
+    CHECK(g_nlog == 1, "mismatch does not log again");
+}
+
+static void test_version_match_silent(void) {
+    odrive_t od;
+    odrive_init(&od, cap_send, NULL, 0, 1.0f, false);
+    odrive_set_logger(&od, "odrv0", cap_log);
+    log_reset();
+    feed_version(&od, ODRIVE_FW_EXPECTED_MAJOR, ODRIVE_FW_EXPECTED_MINOR);
+    CHECK(g_nlog == 0, "matching fw logs nothing");
+}
+
+static void test_init_requests_version(void) {
+    odrive_t od;
+    tx_reset();
+    odrive_init(&od, cap_send, NULL, 0, 1.0f, false);
+    CHECK(g_ntx >= 1, "init sends a frame");
+    CHECK(ODRIVE_ID_CMD(g_tx[0].id) == ODRIVE_CMD_GET_VERSION && g_tx[0].rtr,
+          "init sends a GET_VERSION RTR request");
+}
+
 int main(void) {
     test_setpoint_frame();
     test_msg_rate_enum();
     test_logger();
     test_endpoint_fixture();
+    test_init_requests_version();
+    test_version_mismatch_logs_once();
+    test_version_match_silent();
     printf(g_fail ? "\n%d CHECK(s) FAILED\n" : "\nALL CHECKS PASSED\n", g_fail);
     return g_fail ? 1 : 0;
 }

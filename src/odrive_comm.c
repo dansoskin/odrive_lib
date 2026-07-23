@@ -1,4 +1,5 @@
 #include "odrive.h"
+#include "odrive_endpoints_0_6.h"
 #include <stdio.h>
 #include <stdarg.h>
 
@@ -12,6 +13,9 @@ void odrive_init(odrive_t *od, odrive_send_fn send, void *ctx,
     od->node_id = node_id & 0x3Fu;
     od->motor_conv = (conversion == 0.0f) ? (invert ? -1.0f : 1.0f)
                                           : (invert ? -conversion : conversion);
+    /* Best-effort: ask for the version so the RX path can flag a fw mismatch.
+     * Harmless if the bus/peripheral is not up yet — the host can request again. */
+    (void)odrive_request_version(od);
 }
 
 odrive_status_t odrive_send_frame(odrive_t *od, uint8_t cmd,
@@ -118,6 +122,15 @@ void odrive_on_can_rx(odrive_t *od, uint32_t can_id,
         fb->fw_version_major   = data[4];
         fb->fw_version_minor   = data[5];
         fb->fw_version_revision= data[6];
+        if (!od->fw_checked) {
+            od->fw_checked = true;
+            if (fb->fw_version_major != ODRIVE_FW_EXPECTED_MAJOR ||
+                fb->fw_version_minor != ODRIVE_FW_EXPECTED_MINOR) {
+                odrive_logf(od, "fw %u.%u != endpoint table %s; msg-rate endpoints may be wrong",
+                            fb->fw_version_major, fb->fw_version_minor,
+                            ODRIVE_FW_ENDPOINTS_BUILD);
+            }
+        }
         fire(&od->cb.version, od);
         break;
     case ODRIVE_CMD_TXSDO:
